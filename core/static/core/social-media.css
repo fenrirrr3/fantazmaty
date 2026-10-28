@@ -107,13 +107,18 @@
     margin: var(--space-2) 0 0;
 }
 
-/* „Inne”: nad tabelą opowiadań, domyślnie zwinięte; formularz dodawania w jednym wierszu. */
-.social-media-other {
+/* Sekcje „Inne”, „Cytaty” i „Opowiadania”: jednakowe rozwijane karty z licznikiem przy tytule, opisem w treści
+   i paginacją wewnątrz karty. „Inne” domyślnie zwinięte; formularz dodawania w jednym wierszu. */
+.social-media-section {
     margin-bottom: var(--space-5);
 }
 
-.social-media-other > summary .record-counter {
+.social-media-section > summary .record-counter {
     margin-inline-start: var(--space-2);
+}
+
+.social-media-section > .cms-pagination {
+    padding: var(--space-3) var(--space-5);
 }
 
 .social-media-add {
@@ -158,13 +163,13 @@
 
 .social-quote-add textarea {
     width: 100%;
-    min-width: 16rem;
+    min-width: 12rem;
     min-height: var(--control-height);
     resize: vertical;
 }
 
 .social-quote-content {
-    min-width: 16rem;
+    min-width: 12rem;
     max-width: 40rem;
     white-space: pre-line;
 }
@@ -192,10 +197,30 @@
     }
 }
 
-/* ===== Kalendarz: siatka miesiąca od poniedziałku; na wąskim ekranie lista dni. ===== */
+/* ===== Zakładki Lista / Kalendarz: wyraźniejsze niż zwykłe zakładki (obramowane przyciski). ===== */
 .social-media-tabs {
     margin-bottom: var(--space-4);
 }
+
+.social-media-tabs > .tab-link {
+    border-color: var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 600;
+}
+
+.social-media-tabs > .tab-link:hover {
+    border-color: var(--primary-border);
+    color: var(--primary-dark);
+}
+
+.social-media-tabs > .tab-link:is(.is-active, [aria-current="page"]) {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--on-primary);
+}
+
+/* ===== Kalendarz: siatka miesiąca od poniedziałku; na wąskim ekranie lista dni. ===== */
 
 .social-calendar-header {
     flex-wrap: wrap;

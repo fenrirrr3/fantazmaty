@@ -330,7 +330,7 @@ class CalendarSaveTests(CalendarDataMixin, TestCase):
                  ({'description': 'x' * 301}, 'Opis może mieć najwyżej 300 znaków.'),
                  ({'day': ''}, 'Podaj dzień.'), ({'day': '2026-02-30'}, 'Podaj prawidłową datę.'),
                  ({'day': '1999-12-31'}, 'Podaj dzień z lat 2000–2100.'),
-                 ({'platform': 'tiktok'}, 'Wybierz, gdzie idzie wpis.'))
+                 ({'platform': 'myspace'}, 'Wybierz, gdzie idzie wpis.'))
         for data, error in cases:
             with self.subTest(data=data):
                 response = self.add(**data)
@@ -340,8 +340,12 @@ class CalendarSaveTests(CalendarDataMixin, TestCase):
                 self.assertEqual(SocialCalendarEntry.objects.count(), 1)
         response = self.add(description='Zostaje', day='')
         self.assertEqual(doc(response).xpath('//input[@id="social-calendar-description"]/@value'), ['Zostaje'])
-        # Formularz zachowuje formaty daty z innych pól Social Media.
-        self.assertTrue(SocialCalendarEntryForm({'day': '05.11.2026', 'description': 'x', 'platform': 'other'}).is_valid())
+        # Formularz zachowuje formaty daty z innych pól Social Media; każda platforma z listy (także TikTok) jest dozwolona.
+        for platform in ('facebook', 'instagram', 'facebook_instagram', 'tiktok', 'other'):
+            with self.subTest(platform=platform):
+                self.assertTrue(SocialCalendarEntryForm({'day': '05.11.2026', 'description': 'x',
+                                                         'platform': platform}).is_valid())
+        self.assertEqual(dict(SocialCalendarEntry.Platform.choices)['tiktok'], 'TikTok')
 
     def test_edit_saves_without_changing_author(self):
         """Zapis zmiany: nowe pola, autor bez zmian, „zmienił(a)” – osoba zapisująca; powrót do nowego dnia."""
@@ -402,8 +406,8 @@ class CalendarSaveTests(CalendarDataMixin, TestCase):
 
 class CalendarNavigationTests(CalendarDataMixin, TestCase):
     def test_tabs_on_both_pages_and_menu_link(self):
-        """Lista i Kalendarz mają zakładki „Lista / Kalendarz” z zaznaczoną bieżącą; menu „Promocja” ma pod
-        „Social Media” pozycję „Kalendarz Social Media”, zaznaczoną na stronie kalendarza."""
+        """Lista i Kalendarz mają zakładki „Lista / Kalendarz” z zaznaczoną bieżącą; menu „Promocja” ma tylko
+        „Social Media” (bez osobnej pozycji kalendarza), zaznaczone na obu stronach."""
         for user in (self.coordinator, self.social):
             self.login(user)
             for url, current in ((LIST_URL, 'Lista'), (URL, 'Kalendarz')):
@@ -414,9 +418,8 @@ class CalendarNavigationTests(CalendarDataMixin, TestCase):
                                      [('Lista', LIST_URL), ('Kalendarz', URL)])
                     self.assertEqual([tab.text_content() for tab in tabs if tab.get('aria-current') == 'page'], [current])
                     menu = page.xpath('//details[@data-menu-section="promotion"]/a')
-                    self.assertEqual([link.text_content() for link in menu], ['Social Media', 'Kalendarz Social Media'])
-                    self.assertEqual([link.text_content() for link in menu if link.get('aria-current') == 'page'],
-                                     ['Social Media' if url == LIST_URL else 'Kalendarz Social Media'])
+                    self.assertEqual([(link.text_content(), link.get('aria-current')) for link in menu],
+                                     [('Social Media', 'page')])
 
     def test_activity_labels(self):
         """Dziennik aktywności: wizyta – „Kalendarz Social Media”, zapis – „Zapis wpisu w kalendarzu Social Media”."""

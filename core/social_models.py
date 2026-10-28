@@ -102,6 +102,7 @@ class SocialCalendarEntry(models.Model):
         FACEBOOK = 'facebook', 'Facebook'
         INSTAGRAM = 'instagram', 'Instagram'
         BOTH = 'facebook_instagram', 'Facebook i Instagram'
+        TIKTOK = 'tiktok', 'TikTok'
         OTHER = 'other', 'Inne'
 
     objects = VersionedQuerySet.as_manager()

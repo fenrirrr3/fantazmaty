@@ -33,7 +33,7 @@ def page_doc(response):
 
 
 def table_titles(response):
-    return page_doc(response).xpath('//section[contains(@class, "social-media-card")]//tbody/tr/td[2]//strong/text()')
+    return page_doc(response).xpath('//details[@id="social-texts"]//tbody/tr/td[2]//strong/text()')
 
 
 def quote_titles(response):
@@ -255,13 +255,16 @@ class SocialMediaOtherEntriesTests(SocialMediaDataMixin, TestCase):
         return page_doc(response).xpath('//details[@id="social-other"]')[0]
 
     def test_add_edit_delete_and_section_state(self):
-        """„Inne”: pierwsza sekcja (potem „Cytaty” i „Opowiadania”), domyślnie zwinięta; dodanie, edycja i usunięcie wpisu wracają z rozwiniętą sekcją
+        """„Inne”: pierwsza sekcja (potem „Cytaty” i „Opowiadania” – ta domyślnie rozwinięta), domyślnie zwinięta; dodanie, edycja i usunięcie wpisu wracają z rozwiniętą sekcją
         (tylko raz – następne wejście znów ją zwija); usuwanie ma pytanie potwierdzające."""
         page = self.client.get(URL)
         self.assertIsNone(self.other_section(page).get('open'))
-        self.assertEqual([el.get('id') or el.get('aria-labelledby') for el in
-                          page_doc(page).xpath('//details[starts-with(@id, "social-")] | //section[contains(@class, "social-media-card")]')],
-                         ['social-other', 'social-quotes', 'social-texts-heading'])
+        sections = page_doc(page).xpath('//details[contains(@class, "social-media-section")]')
+        self.assertEqual([(el.get('id'), el.get('open') is not None) for el in sections],
+                         [('social-other', False), ('social-quotes', False), ('social-texts', True)])
+        # Każda sekcja: licznik przy tytule, a paginacja (Cytaty, Opowiadania) wewnątrz karty.
+        self.assertEqual([len(el.xpath('./summary//span[@class="record-counter"]')) for el in sections], [1, 1, 1])
+        self.assertEqual([len(el.xpath('.//nav[@data-sort-config]')) for el in sections], [0, 1, 1])
         response = self.client.post(URL, {'action': 'entry_add', 'description': '  Zapowiedź   naboru ',
                                           'status': 'in_progress', 'posted_on': '2026-11-01', 'url': ''}, follow=True)
         entry = SocialMediaEntry.objects.get()
