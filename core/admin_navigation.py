@@ -18,12 +18,14 @@ GROUPS = (
                         'core.audiodescription', 'audio_description_tasks', 'core.publicaudiobooksettings')),
     ('people', 'Ludzie', ('people.person', 'people.vacation', 'people.role', 'people.dropboxfolder', 'people.dropboxaccess',
                           'authors.author', 'blacklist')),
-    ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry', 'core.socialmediaquote')),
+    ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry', 'core.socialmediaquote',
+                               'core.socialcalendarentry')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
-    ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole',
+    ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole', 'core.discordsettings',
                                 'core.siteteamsection', 'core.siteteamsettings', 'core.sitecataloganthology',
                                 'core.sitelistenanthology')),
-    ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification', 'core.useractivity')),
+    ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification',
+                                               'core.discordrolechange', 'core.useractivity')),
 )
 EXPANDED = ('submissions', 'texts', 'publication')
 HIDDEN = ('auth.user',)

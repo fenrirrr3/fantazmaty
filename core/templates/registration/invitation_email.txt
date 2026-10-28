@@ -10,5 +10,9 @@ Link jest ważny przez {{ days }} dni i działa tylko raz. Po ustawieniu hasła 
 {{ login_url }}
 
 Jeśli link wygaśnie, na stronie logowania kliknij „Nie pamiętam hasła” albo poproś koordynatora o ponowne zaproszenie.
-
+{% if discord_url %}
+Zapraszamy też na serwer Fantazmatów na Discordzie:
+{{ discord_url }}
+Po dołączeniu od razu ustaw swój pseudonim na imię + nazwisko, jeśli twoje konto nazywa się inaczej.
+{% endif %}
 Zespół Fantazmatów{% endautoescape %}

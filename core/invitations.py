@@ -37,8 +37,41 @@ class InvitationTokenGenerator(PasswordResetTokenGenerator):
 invitation_token_generator = InvitationTokenGenerator()
 
 
-def send_invitation(user, request):
-    """Wysyła zaproszenie; ValidationError, gdy konta nie da się zaprosić."""
+DISCORD_NO_LINK = ('Link zapraszający na Discorda nie jest ustawiony – ustaw go w panelu: '
+                   '„Discord – ustawienia (zaproszenie)”.')
+DISCORD_FIELD = '_invite_discord'
+
+
+def discord_invite_url():
+    """Link zapraszający na serwer Discorda z ustawień w panelu (pusty – brak)."""
+    from core.notification_models import DiscordSettings
+    return DiscordSettings.invite_url_value()
+
+
+def setup_discord_field(field):
+    """Pole „Zaproś też na Discorda”: domyślnie zaznaczone, gdy link jest ustawiony; bez linku – nieaktywne z podpowiedzią."""
+    url = discord_invite_url()
+    field.initial = bool(url)
+    if url:
+        field.help_text = f'Link {url} trafi do maila z zaproszeniem do CMS-u.'
+    else:
+        field.disabled = True
+        field.help_text = DISCORD_NO_LINK
+
+
+def discord_checkbox():
+    """Pole wyboru obok przycisku „Wyślij zaproszenie” (formularz konta i osoby); bez linku – podpowiedź."""
+    from django.utils.html import format_html
+    url = discord_invite_url()
+    if not url:
+        return format_html('<div class="help cms-inline-help">{}</div>', DISCORD_NO_LINK)
+    return format_html('<label class="cms-inline-help"><input type="checkbox" name="{}" value="1" checked> '
+                       'Zaproś też na Discorda ({})</label>', DISCORD_FIELD, url)
+
+
+def send_invitation(user, request, discord=False):
+    """Wysyła zaproszenie (z linkiem na Discorda, gdy discord i link jest ustawiony); ValidationError, gdy konta
+    nie da się zaprosić."""
     if not user.is_active:
         raise ValidationError('Konto jest nieaktywne – najpierw je włącz.')
     if not user.email:
@@ -52,6 +85,7 @@ def send_invitation(user, request):
         'link': request.build_absolute_uri(path),
         'login_url': request.build_absolute_uri(reverse('login')),
         'days': invitation_days(),
+        'discord_url': discord_invite_url() if discord else '',
     }
     subject = render_to_string('registration/invitation_subject.txt', context).strip()
     body = render_to_string('registration/invitation_email.txt', context)

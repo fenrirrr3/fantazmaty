@@ -173,17 +173,21 @@ class PeopleChoicesTests(TestCase):
 
     def test_form_fields_share_one_people_query(self):
         """Pola „Kto pisze” i „Konsultacja” korzystają z jednej listy osób: formularz robi 2 zapytania (kontrolerzy
-        i osoby), a wyświetlenie obu list opcji nie dodaje kolejnych; zapisany kontroler jest wśród opcji obu pól."""
+        i osoby), a wyświetlenie obu list opcji nie dodaje kolejnych; „Kto pisze” to część listy konsultacji (bez osób
+        spoza ekipy i nieaktywnych bez historii); zapisany kontroler jest wśród opcji obu pól."""
         from core.views.audio_descriptions import DescriptionForm
         book = Anthology.objects.create(title='AD z dwoma polami')
         controller = Person.objects.create(first_name='Była', last_name='Kontrolerka', is_active=False)
+        stranger = Person.objects.create(first_name='Obca', last_name='Spozaekipy', is_external=True)
         book.audio_description.controllers.add(controller)
         task = book.production_tasks.get(task_type='audio_description')
         with self.assertNumQueries(2):
             form = DescriptionForm(instance=task, description=book.audio_description)
             single = [value for value, _ in form.fields['assigned_to'].choices]
             multiple = [value for value, _ in form.fields['controllers'].choices]
-        self.assertEqual(single, ['', *multiple])
+        self.assertEqual(single, ['', *[value for value in multiple if value != stranger.pk]])
+        self.assertIn(stranger.pk, multiple)
+        self.assertIn(controller.pk, single)
         self.assertIn(controller.pk, multiple)
         self.assertEqual(form.fields['controllers'].clean([str(controller.pk)])[0], controller)
 
@@ -226,3 +230,230 @@ class AnthologyTaskTableTests(TestCase):
         self.assertEqual(assigned['task'].assigned_to_id, artist.person_profile.pk)
         self.assertFalse(assigned['can_claim'])
         self.assertContains(response, ready.title)
+
+
+class ExternalConsultantTests(AudioDescriptionTestData, TestCase):
+    """Konsultacja audiodeskrypcji z osobami spoza ekipy: wybór z wyszukiwarki, dodanie nowej osoby bez konta,
+    brak duplikatów, oznaczenie na stronach i brak dostępu, list zespołu, Discorda i Dropboxa dla takiej osoby."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        from authors.models import Author
+        cls.team_person = Person.objects.create(first_name='Ewa', last_name='Kowalska')
+        author = Author.objects.create(first_name='Adam', last_name='Pisarz', pseudonym='Nocny Kruk')
+        cls.pen_person = Person.objects.create(first_name='Adam', last_name='Pisarz', author_profile=author,
+                                               email='adam@example.com')
+        cls.external = Person.objects.create(first_name='Olga', last_name='Spozaekipy', is_external=True)
+        cls.former = Person.objects.create(first_name='Stary', last_name='Członek', is_active=False)
+
+    def form(self, **data):
+        from core.views.audio_descriptions import DescriptionForm
+        return DescriptionForm(data, instance=self.task, description=self.description)
+
+    def assign(self, user=None, **data):
+        """Zapis sekcji „Przypisanie” jako koordynator (domyślnie)."""
+        return self.post(user or self.manager, **{'action': 'assignment', 'assigned_to': '', **data})
+
+    def new_person(self, first='Nowa', last='Konsultantka', email=''):
+        return {'new_controller_first_name': first, 'new_controller_last_name': last, 'new_controller_email': email}
+
+    def test_new_person_form_variants(self):
+        """Formularz nowej osoby: puste pola – bez nowej osoby; imię i nazwisko po usunięciu nadmiarowych spacji;
+        brak imienia, nazwiska albo sam e-mail – błędy pól; duplikat po imieniu i nazwisku (inna wielkość liter,
+        spacje), po pseudonimie powiązanego autora, po e-mailu (bez wielkości liter) – błąd; zły e-mail – błąd."""
+        cases = [
+            ('puste', self.new_person('', '', ''), set(), None),
+            ('spacje', self.new_person('  Anna ', ' Maria   Nowa '), set(), ('Anna', 'Maria Nowa', None)),
+            ('z e-mailem', self.new_person('Iza', 'Nowa', ' Iza@Example.com '), set(), ('Iza', 'Nowa', 'iza@example.com')),
+            ('bez nazwiska', self.new_person('Anna', ''), {'new_controller_last_name'}, None),
+            ('bez imienia', self.new_person('', 'Nowa'), {'new_controller_first_name'}, None),
+            ('sam e-mail', self.new_person('', '', 'x@example.com'),
+             {'new_controller_first_name', 'new_controller_last_name'}, None),
+            ('duplikat nazwiska', self.new_person('  EWA ', 'kowalska  '), {'new_controller_first_name'}, None),
+            ('duplikat osoby spoza ekipy', self.new_person('olga', 'SPOZAEKIPY'), {'new_controller_first_name'}, None),
+            ('duplikat pseudonimu', self.new_person('nocny', '  KRUK'), {'new_controller_first_name'}, None),
+            ('duplikat e-maila', self.new_person('Inna', 'Osoba', 'ADAM@example.com'),
+             {'new_controller_first_name'}, None),
+            ('zły e-mail', self.new_person('Inna', 'Osoba', 'bez-malpy'), {'new_controller_email'}, None),
+        ]
+        for case, data, errors, created in cases:
+            with self.subTest(case):
+                form = self.form(**data)
+                self.assertEqual(form.is_valid(), not errors, form.errors)
+                self.assertEqual(set(form.errors), errors)
+                person = form.new_controller
+                self.assertEqual(person and (person.first_name, person.last_name, person.email), created)
+        form = self.form(**self.new_person('Ewa', 'Kowalska'))
+        form.is_valid()
+        self.assertIn('Ewa Kowalska', str(form.errors['new_controller_first_name']))
+
+    def test_coordinator_adds_new_external_person_next_to_selected_ones(self):
+        """Wybrana osoba spoza ekipy i nowa osoba podane razem: obie trafiają do konsultacji; nowa osoba jest spoza
+        ekipy, nieaktywna, bez konta; strona AD, lista AD i lista zadań pokazują je z oznaczeniem „spoza ekipy”."""
+        before = Person.objects.count()
+        response = self.assign(controllers=[self.external.pk, self.controller.person_profile.pk],
+                               **self.new_person(' Nowa ', 'Konsultantka', 'Nowa@Example.com'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Person.objects.count(), before + 1)
+        new = Person.objects.get(last_name='Konsultantka')
+        self.assertEqual((new.first_name, new.email, new.user_id, new.is_external, new.is_active),
+                         ('Nowa', 'nowa@example.com', None, True, False))
+        self.assertEqual(set(self.description.controllers.all()), {self.external, new, self.controller.person_profile})
+        self.client.force_login(self.admin)
+        for url in (self.detail, self.list_url, reverse('core:task_list')):
+            with self.subTest(url=url):
+                content = self.client.get(url).content.decode()
+                self.assertEqual(content.count('(spoza ekipy)'), 2)
+                self.assertIn('Nowa Konsultantka', content)
+                self.assertNotIn(f'{self.controller.person_profile} (spoza ekipy)', content)
+        tasks = self.client.get(reverse('core:task_list'), {'q': 'konsultantka'})
+        self.assertEqual(tasks.context['page_obj'].paginator.count, 1)
+
+    def test_search_offers_external_and_inactive_people_only_for_consultation(self):
+        """Wyszukiwarka konsultacji ma też osoby spoza ekipy i nieaktywne bez historii (wyraźnie oznaczone); pole
+        „Kto pisze” ich nie ma. Wybór osoby spoza ekipy się zapisuje."""
+        form = self.form()
+        consultants = {str(value): label for value, label in form.fields['controllers'].choices}
+        writers = {str(value) for value, _ in form.fields['assigned_to'].choices}
+        self.assertEqual(consultants[str(self.external.pk)], 'Olga Spozaekipy – spoza ekipy')
+        self.assertEqual(consultants[str(self.former.pk)], 'Stary Członek – nieaktywny')
+        self.assertEqual(consultants[str(self.team_person.pk)], 'Ewa Kowalska')
+        self.assertNotIn(str(self.external.pk), writers)
+        self.assertNotIn(str(self.former.pk), writers)
+        self.assertIn(str(self.team_person.pk), writers)
+        self.assertEqual(self.assign(controllers=[self.external.pk, self.former.pk]).status_code, 302)
+        self.assertEqual(set(self.description.controllers.all()), {self.external, self.former})
+        # Zapisani konsultanci zostają w wyborze po ponownym otwarciu formularza.
+        self.assertEqual(set(self.form().fields['controllers'].initial), {self.external.pk, self.former.pk})
+
+    def test_parallel_creation_reuses_sole_match_and_rejects_several(self):
+        """Tę samą osobę ktoś dodał między sprawdzeniem formularza a zapisem: jedyne dopasowanie zostaje użyte bez
+        drugiego wpisu; kilka dopasowań – błąd 400 i nic się nie zmienia."""
+        from unittest.mock import patch
+        from core.views.audio_descriptions import DescriptionForm
+        original = DescriptionForm.is_valid
+
+        def creating(count, first):
+            def is_valid(form):
+                result = original(form)
+                for _ in range(count):
+                    Person.objects.create(first_name=first, last_name='Osoba', is_external=True)
+                return result
+            return is_valid
+
+        with patch.object(DescriptionForm, 'is_valid', autospec=True, side_effect=creating(1, 'Równoległa')):
+            response = self.assign(**self.new_person('Równoległa', 'Osoba'))
+        self.assertEqual(response.status_code, 302)
+        people = Person.objects.filter(last_name='Osoba')
+        self.assertEqual(people.count(), 1)
+        self.assertEqual(list(self.description.controllers.all()), list(people))
+        self.description.controllers.clear()
+        with patch.object(DescriptionForm, 'is_valid', autospec=True, side_effect=creating(2, 'Inna')):
+            response = self.assign(assigned_to=self.writer.person_profile.pk,
+                                   **self.new_person('Inna', 'Osoba'))
+        self.assertContains(response, 'Powstało kilka pasujących wpisów', status_code=400)
+        self.assertFalse(self.description.controllers.exists())
+        self.assertEqual(Person.objects.filter(first_name='Inna', last_name='Osoba').count(), 2)
+        self.task.refresh_from_db()
+        self.assertIsNone(self.task.assigned_to_id)
+
+    def test_role_matrix_for_adding_external_consultant(self):
+        """Nową osobę spoza ekipy dodaje tylko koordynator lub superuser; osoba pisząca, kontroler, zwykły członek
+        i konto spoza zespołu – 403; gość – przekierowanie do logowania. Odrzucona próba niczego nie tworzy."""
+        self.assign_writer_and_controller()
+        outsider = get_user_model().objects.create_user('ad-consult-outsider')
+        cases = [('superuser', self.admin, 302), ('koordynator', self.manager, 302),
+                 ('osoba pisząca', self.writer, 403), ('kontroler', self.controller, 403),
+                 ('zwykły członek', self.other, 403), ('konto spoza zespołu', outsider, 403)]
+        for number, (case, user, status) in enumerate(cases):
+            with self.subTest(case):
+                last = f'Macierz{number}'
+                data = {'assigned_to': self.writer.person_profile.pk, **self.new_person('Rola', last)}
+                response = self.post(user, action='assignment', **data)
+                self.assertEqual(response.status_code, status)
+                self.assertEqual(Person.objects.filter(last_name=last).exists(), status == 302)
+        self.client.logout()
+        response = self.client.post(self.detail, {'action': 'assignment', **self.new_person('Gość', 'Macierz')})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
+        self.assertFalse(Person.objects.filter(last_name='Macierz').exists())
+
+    def test_external_consultant_gets_no_access(self):
+        """Osoba spoza ekipy w konsultacji nie ma konta; nawet z dawnym kontem nie zaloguje się, nie jest członkiem
+        zespołu i nie zmieni etapu ani przypisania (uprawnienia tylko dla osób z aktywnym kontem w ekipie)."""
+        from core.auth_backends import EmailBackend
+        from core.permissions import is_team_member
+        from core.views.audio_descriptions import may_edit
+        self.assign(controllers=[], **self.new_person('Bez', 'Dostępu'))
+        new = Person.objects.get(last_name='Dostępu')
+        self.assertIsNone(new.user_id)
+        user = get_user_model().objects.create_user('ad-external-consultant')
+        self.external.user = user
+        self.external.save()
+        self.description.controllers.set([self.external, new])
+        user.refresh_from_db()
+        self.assertFalse(EmailBackend().user_can_authenticate(user))
+        self.assertFalse(is_team_member(user))
+        self.assertFalse(may_edit(user, self.book))
+        for data in ({'action': 'stage', 'stage': 'consultation'}, {'action': 'content', 'content': 'x'},
+                     {'action': 'assignment', 'controllers': [self.external.pk]}):
+            with self.subTest(data=data):
+                response = self.post(user, **data)
+                self.assertIn(response.status_code, (302, 403))
+                if response.status_code == 302:
+                    self.assertIn(reverse('login'), response.url)
+        self.description.refresh_from_db()
+        self.assertEqual((self.description.stage, self.description.content), ('writing', ''))
+
+    def test_external_consultant_absent_from_team_lists_exports_and_integrations(self):
+        """Nowa osoba spoza ekipy z konsultacji nie trafia do: aktywnego zespołu, danych strony „Ekipa”
+        (fantazmaty.pl), eksportu zespołu, wyboru wykonawców innych zadań, Dropboxa ani Discorda.
+        Członek ekipy z konsultacji zostaje na liście wykonawców (regresja)."""
+        from io import StringIO
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from core.anthology_tasks import task_people
+        from core.notification_models import DiscordNotification
+        from core.site_team import people_by_role, team_payload
+        from people.models import DropboxAccess, Role
+        notifications = DiscordNotification.objects.count()
+        with patch('people.dropbox_access.schedule') as schedule:
+            self.assign(controllers=[self.former.pk], **self.new_person('Tylko', 'Konsultująca'))
+        new = Person.objects.get(last_name='Konsultująca')
+        schedule.assert_not_called()
+        self.assertFalse(DropboxAccess.objects.filter(person=new).exists())
+        self.assertEqual(DiscordNotification.objects.count(), notifications)
+        # Nawet z rolą osoba spoza ekipy nie trafia na stronę „Ekipa”.
+        new.roles.add(Role.objects.get(name='Korektor'))
+        names = {name for people in people_by_role().values() for _, name in people.values()}
+        self.assertNotIn('Tylko Konsultująca', names)
+        self.assertNotIn('Konsultująca', str(team_payload()))
+        new.roles.clear()
+        export = StringIO()
+        call_command('export_team_members', stdout=export)
+        checks = {
+            'aktywny zespół': Person.objects.active(),
+            'wykonawcy zadań': task_people(),
+        }
+        for case, people in checks.items():
+            with self.subTest(case):
+                self.assertNotIn(new, people)
+                self.assertNotIn(self.external, people)
+        self.assertNotIn('Konsultująca', export.getvalue())
+        # Dawny członek ekipy z konsultacji zostaje na liście wykonawców.
+        self.assertIn(self.former, task_people())
+
+    def test_people_page_lists_external_people_as_before(self):
+        """Strona „Zespół” (decyzja właściciela – bez zmian): pokazuje wszystkie osoby spoza ekipy, także
+        konsultantów audiodeskrypcji bez konta i ról."""
+        from people.models import Role
+        with_role = Person.objects.create(first_name='Zewn', last_name='Zrolą', is_external=True)
+        with_role.roles.add(Role.objects.get(name='Korektor'))
+        with_account = Person.objects.create(first_name='Zewn', last_name='Zkontem', is_external=True,
+                                             user=get_user_model().objects.create_user('ad-ext-account'))
+        self.client.force_login(self.other)
+        people = list(self.client.get(reverse('core:people_list')).context['people'])
+        for person in (with_role, with_account, self.external):
+            with self.subTest(person=str(person)):
+                self.assertIn(person, people)

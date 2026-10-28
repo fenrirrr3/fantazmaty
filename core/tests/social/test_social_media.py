@@ -1,4 +1,4 @@
-"""Zakładka Social Media: dostęp (cały zespół czyta, Social Media edytuje), zakres opowiadań (antologie gotowe /
+"""Zakładka Social Media: dostęp (tylko superuser, koordynatorzy i rola „Social Media”), zakres opowiadań (antologie gotowe /
 niewydane), kolumny, zapis wierszy z tokenem wersji (bez nadpisywania cudzych zmian), sekcje „Inne” i „Cytaty”,
 panel admina i migracja danych roli."""
 import datetime
@@ -73,31 +73,46 @@ class SocialMediaDataMixin:
 
 
 class SocialMediaAccessTests(SocialMediaDataMixin, TestCase):
-    def test_page_for_whole_team_edits_for_social_media_only(self):
-        """Stronę widzi cały zespół; zapis Opowiadań i Innych (POST) mają tylko superuser, koordynator dowolnego
-        działu i rola „Social Media” – redaktor i recenzent dostają 403. Konto spoza zespołu – 403 także na stronie,
-        anonim – przekierowanie do logowania."""
+    def test_access_matrix(self):
+        """Stronę (GET) i zapisy (POST) mają tylko superuser, koordynator dowolnego działu i rola „Social Media”.
+        Redaktor, recenzent, członek bez ról, członek z samą rolą honorową i konto spoza zespołu dostają 403
+        i niczego nie zapisują – także cytatu ani usunięcia własnego cytatu „Wolne”; gość – logowanie."""
+        no_roles = create_member('social-none', roles.EDITOR)
+        no_roles.person_profile.roles.clear()
+        no_roles.groups.clear()
         cases = (
-            ('superuser', self.admin, 200, 302), ('koordynator', self.coordinator, 200, 302),
-            ('social media', self.social, 200, 302),
-            ('redaktor', create_member('social-editor', roles.EDITOR), 200, 403),
-            ('recenzent', create_member('social-reviewer', roles.REVIEWER), 200, 403),
-            ('spoza zespołu', get_user_model().objects.create_user('social-outsider'), 403, 403),
-            ('anonim', None, 302, 302),
+            ('superuser', self.admin, True), ('koordynator', self.coordinator, True),
+            ('social media', self.social, True),
+            ('redaktor', create_member('social-editor', roles.EDITOR), False),
+            ('recenzent', create_member('social-reviewer', roles.REVIEWER), False),
+            ('bez ról', no_roles, False), ('rola honorowa', create_member('social-emperor', roles.EMPEROR), False),
+            ('spoza zespołu', get_user_model().objects.create_user('social-outsider'), False),
+            ('gość', None, False),
         )
-        for label, user, page_status, post_status in cases:
-            with self.subTest(user=label):
-                self.client.logout()
-                if user:
-                    self.client.force_login(user)
-                self.assertEqual(self.client.get(URL).status_code, page_status)
-                response = self.client.post(URL, {'action': 'entry_add', 'description': f'Wpis: {label}',
-                                                  'status': 'free'})
-                self.assertEqual(response.status_code, post_status)
-                if user is None:
-                    self.assertTrue(response['Location'].startswith(reverse('login')))
-                self.assertEqual(SocialMediaEntry.objects.filter(description=f'Wpis: {label}').exists(),
-                                 page_status == 200 and post_status == 302)
+        for label, user, allowed in cases:
+            self.client.logout()
+            if user:
+                self.client.force_login(user)
+            own = SocialMediaQuote.objects.create(text=self.story, content=f'Własny: {label}', added_by=user)
+            posts = (
+                ('entry_add', {'description': f'Wpis: {label}', 'status': 'free'},
+                 lambda: SocialMediaEntry.objects.filter(description=f'Wpis: {label}').exists()),
+                ('quote_add', {'text': self.story.pk, 'content': f'Cytat: {label}'},
+                 lambda: SocialMediaQuote.objects.filter(content=f'Cytat: {label}').exists()),
+                ('quote_delete', {'quote': own.pk, 'version': _token(user, 'quote', own.pk, version_of(own))
+                                  if user else ''},
+                 lambda: not SocialMediaQuote.objects.filter(pk=own.pk).exists()),
+            )
+            with self.subTest(user=label, method='GET'):
+                response = self.client.get(URL)
+                self.assertEqual(response.status_code, 200 if allowed else 302 if user is None else 403)
+            for action, data, saved in posts:
+                with self.subTest(user=label, method='POST', action=action):
+                    response = self.client.post(URL, {'action': action, **data})
+                    self.assertEqual(response.status_code, 302 if allowed or user is None else 403)
+                    if user is None:
+                        self.assertTrue(response['Location'].startswith(reverse('login')))
+                    self.assertEqual(saved(), allowed)
 
 
 class SocialMediaTextListTests(SocialMediaDataMixin, TestCase):
@@ -334,68 +349,13 @@ class SocialMediaOtherEntriesTests(SocialMediaDataMixin, TestCase):
                 self.assertEqual(str(record), expected)
 
 
-class SocialMediaQuotesOnlyTests(SocialMediaDataMixin, TestCase):
-    """Członek zespołu bez roli „Social Media” widzi wyłącznie sekcję „Cytaty”."""
-
-    @classmethod
-    def setUpTestData(cls):
-        super().setUpTestData()
-        cls.editor = create_member('social-editor', roles.EDITOR)
-        cls.record = TextSocialMedia.objects.create(text=cls.story, status='posted', posted_on=datetime.date(2026, 10, 1),
-                                                    url='https://facebook.com/fantazmaty/1')
-        cls.entry = SocialMediaEntry.objects.create(description='Zapowiedź naboru', status='in_progress')
-
-    def setUp(self):
-        self.client.force_login(self.editor)
-
-    def test_only_expanded_quotes_section_without_stories_and_other_entries_queries(self):
-        """Bez sekcji „Inne” i „Opowiadania” (także filtrów i stronicowania opowiadań) – w HTML i w zapytaniach do bazy;
-        „Cytaty” od razu rozwinięte. Osoba od Social Media widzi wszystkie trzy sekcje, „Cytaty” zwinięte."""
-        for user, sections, quotes_open in ((self.editor, ['social-quotes'], True),
-                                            (self.social, ['social-other', 'social-quotes', 'social-texts-heading'], False)):
-            with self.subTest(user=user.username):
-                self.client.force_login(user)
-                self.client.get(URL)  # pierwsze wejście zapisuje sesję – poza pomiarem
-                with CaptureQueriesContext(connection) as queries:
-                    doc = page_doc(self.client.get(URL))
-                self.assertEqual([el.get('id') or el.get('aria-labelledby') for el in doc.xpath(
-                    '//details[starts-with(@id, "social-")] | //section[contains(@class, "social-media-card")]')], sections)
-                self.assertEqual(doc.xpath('//details[@id="social-quotes"]')[0].get('open') is not None, quotes_open)
-                self.assertEqual(bool(doc.xpath('//form[@aria-label="Filtry opowiadań"] | //select[@name="status"]'
-                                                 '[@multiple]')), not quotes_open)
-                sql = ' '.join(query['sql'] for query in queries.captured_queries)
-                self.assertEqual('core_socialmediaentry' in sql, not quotes_open)
-                self.assertEqual('Zapowiedź naboru' in doc.text_content(), not quotes_open)
-
-    def test_edit_posts_are_forbidden(self):
-        """Zapis wiersza opowiadania, dodanie, edycja i usunięcie wpisu „Inne” przez członka bez roli – 403, bez zmian."""
-        text_version = _token(self.editor, 'text', self.story.pk, version_of(self.record))
-        entry_version = _token(self.editor, 'entry', self.entry.pk, version_of(self.entry))
-        cases = (
-            {'action': 'text', 'text': self.story.pk, 'version': text_version, 'status': 'free'},
-            {'action': 'entry_add', 'description': 'Nowy', 'status': 'free'},
-            {'action': 'entry_edit', 'entry': self.entry.pk, 'version': entry_version, 'description': 'Zmiana',
-             'status': 'posted'},
-            {'action': 'entry_delete', 'entry': self.entry.pk, 'version': entry_version},
-        )
-        for data in cases:
-            with self.subTest(action=data['action']):
-                self.assertEqual(self.client.post(URL, data).status_code, 403)
-        self.record.refresh_from_db()
-        self.entry.refresh_from_db()
-        self.assertEqual((self.record.status, self.entry.description, self.entry.status),
-                         ('posted', 'Zapowiedź naboru', 'in_progress'))
-        self.assertEqual(SocialMediaEntry.objects.count(), 1)
-
-
 class SocialMediaQuoteTests(SocialMediaDataMixin, TestCase):
-    """Sekcja „Cytaty”: dodawanie przez cały zespół, status i data – Social Media, usuwanie, walidacja i wersje."""
+    """Sekcja „Cytaty” (osoby od Social Media): dodawanie, status i data, usuwanie, walidacja i wersje."""
 
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.editor = create_member('social-editor', roles.EDITOR)
-        cls.other = create_member('social-other', roles.PROOFREADER)
+        cls.other = create_member('social-other', roles.SOCIAL_MEDIA)
 
     def quotes_section(self, response):
         return page_doc(response).xpath('//details[@id="social-quotes"]')[0]
@@ -427,68 +387,42 @@ class SocialMediaQuoteTests(SocialMediaDataMixin, TestCase):
                 self.assertIsNotNone(self.quotes_section(response).get('open'))
                 self.assertEqual(quote_titles(response), expected)
 
-    def test_member_adds_quotes_and_many_people_quote_one_text(self):
-        """Członek zespołu zapisuje cytat (data – dzisiaj, status „Wolne”, autor); powrót do listy z rozwiniętą sekcją
-        i kotwicą tekstu. Jeden tekst ma cytaty wielu osób w kolejności dodania; po usunięciu konta zostaje podpis."""
-        for user, content in ((self.editor, '  Smok spał\r\nna złocie.  '), (self.social, 'Drugi cytat')):
+    def test_social_media_adds_quotes_and_many_people_quote_one_text(self):
+        """Osoba od Social Media zapisuje cytat (data – dzisiaj, status „Wolne”, autor); powrót do listy z rozwiniętą
+        sekcją (tylko raz) i kotwicą tekstu. Jeden tekst ma cytaty wielu osób w kolejności dodania; po usunięciu konta
+        zostaje podpis."""
+        for user, content in ((self.other, '  Smok spał\r\nna złocie.  '), (self.social, 'Drugi cytat')):
             with self.subTest(user=user.username):
                 self.client.force_login(user)
                 response = self.add_quote(self.story, content, return_query='q=smo&quotes_page=1&evil=1')
                 location = urlsplit(response['Location'])
                 self.assertEqual((location.query, location.fragment),
                                  ('q=smo&quotes_page=1', f'social-quote-text-{self.story.pk}'))
-                # Flaga sesji rozwija sekcję także bez parametrów cytatów – u Social Media tylko raz.
+                # Flaga sesji rozwija sekcję także bez parametrów cytatów – tylko raz.
                 self.assertIsNotNone(self.quotes_section(self.client.get(URL)).get('open'))
-                self.assertEqual(self.quotes_section(self.client.get(URL)).get('open') is None, user == self.social)
+                self.assertIsNone(self.quotes_section(self.client.get(URL)).get('open'))
         first, second = SocialMediaQuote.objects.order_by('pk')
         self.assertEqual((first.text, first.content, first.status, first.posted_on, first.added_by, first.added_by_name,
                           first.updated_by),
-                         (self.story, 'Smok spał\nna złocie.', 'free', timezone.localdate(), self.editor,
-                          'social-editor Testowy', self.editor))
+                         (self.story, 'Smok spał\nna złocie.', 'free', timezone.localdate(), self.other,
+                          'social-other Testowy', self.other))
         self.assertEqual((second.added_by, second.content), (self.social, 'Drugi cytat'))
-        self.editor.delete()
+        self.other.delete()
         group = page_doc(self.client.get(URL)).xpath(f'//tbody[@id="social-quote-text-{self.story.pk}"]')[0]
         rows = [{td.get('data-label'): ' '.join(td.text_content().split()) for td in row.xpath('./td[@data-label]')}
                 for row in group.xpath('./tr[@class="social-quote-row"]')]
         self.assertEqual([(row['Cytat'], row['Kto dodał']) for row in rows],
-                         [('Smok spał na złocie.', 'social-editor Testowy'), ('Drugi cytat', 'social-person Testowy')])
+                         [('Smok spał na złocie.', 'social-other Testowy'), ('Drugi cytat', 'social-person Testowy')])
         self.assertEqual(SocialMediaQuote.objects.get(pk=first.pk).added_by, None)
 
-    def test_members_without_roles_or_with_honorary_role_only_add_quotes(self):
-        """Osoba w ekipie bez żadnej roli i osoba tylko z rolą honorową „Imperator Ludzkości” widzą samą sekcję
-        „Cytaty”, dodają cytaty, ale nie zmieniają statusu (403); konto bez profilu osoby nie wchodzi wcale."""
-        no_roles = create_member('social-none', roles.EDITOR)
-        no_roles.person_profile.roles.clear()
-        no_roles.groups.clear()
-        emperor = create_member('social-emperor', roles.EMPEROR)
-        stranger = get_user_model().objects.create_user('social-stranger')
-        self.client.force_login(stranger)
-        self.assertEqual(self.client.get(URL).status_code, 403)
-        for user in (no_roles, emperor):
-            with self.subTest(user=user.username):
-                self.client.force_login(user)
-                page = self.client.get(URL)
-                self.assertEqual(page_doc(page).xpath('//details/@id'), ['social-quotes'])
-                self.assertEqual(self.add_quote(self.story, f'Cytat {user.username}').status_code, 302)
-                quote = SocialMediaQuote.objects.get(added_by=user)
-                self.assertEqual(self.change_quote(user, quote, 'quote_edit', status='posted',
-                                                   posted_on='2026-11-05').status_code, 403)
-                self.assertEqual(self.change_quote(user, quote, 'quote_delete').status_code, 302)
-                self.assertFalse(SocialMediaQuote.objects.filter(pk=quote.pk).exists())
-
-    def test_status_and_date_are_changed_by_social_media_only(self):
-        """Osoba od Social Media zmienia status i datę cudzego cytatu; autor cytatu bez tej roli dostaje 403
-        i widzi status jako etykietę, bez listy wyboru."""
-        quote = SocialMediaQuote.objects.create(text=self.story, content='Cytat', added_by=self.editor)
-        self.client.force_login(self.editor)
-        row = page_doc(self.client.get(URL)).xpath(f'//tr[@id="social-quote-{quote.pk}"]')[0]
-        self.assertEqual((row.xpath('.//select'), row.xpath('.//span[@class="social-status-label"]/text()')),
-                         ([], ['Wolne']))
-        self.assertEqual(self.change_quote(self.editor, quote, 'quote_edit', status='posted',
-                                           posted_on='2026-11-05').status_code, 403)
-        quote.refresh_from_db()
-        self.assertEqual((quote.status, quote.posted_on), ('free', timezone.localdate()))
+    def test_social_media_changes_status_and_date_of_any_quote(self):
+        """Osoba od Social Media zmienia status i datę cytatu dodanego przez kogoś innego (wiersz ma listę statusów
+        i pole daty); powrót do tekstu cytatu."""
+        quote = SocialMediaQuote.objects.create(text=self.story, content='Cytat', added_by=self.other)
         self.client.force_login(self.social)
+        row = page_doc(self.client.get(URL)).xpath(f'//tr[@id="social-quote-{quote.pk}"]')[0]
+        self.assertEqual((row.xpath('.//select[@name="status"]/option[@selected]/text()'),
+                          row.xpath('.//input[@name="posted_on"]/@value')), (['Wolne'], [timezone.localdate().isoformat()]))
         response = self.change_quote(self.social, quote, 'quote_edit', status='posted', posted_on='2026-11-05',
                                      return_query='quotes_page=2')
         self.assertEqual(urlsplit(response['Location']).fragment, f'social-quote-text-{self.story.pk}')
@@ -496,30 +430,28 @@ class SocialMediaQuoteTests(SocialMediaDataMixin, TestCase):
         self.assertEqual((quote.status, quote.posted_on, quote.updated_by),
                          ('posted', datetime.date(2026, 11, 5), self.social))
 
-    def test_delete_rules(self):
-        """Autor usuwa własny cytat ze statusem „Wolne”; własnego w przygotowaniu ani cudzego nie usunie (403).
-        Social Media usuwa dowolny cytat. Przycisk „Usuń” widać tylko tam, gdzie usunięcie jest dozwolone."""
+    def test_delete_any_quote_regardless_of_author_and_status(self):
+        """Osoba od Social Media i koordynator usuwają dowolny cytat – własny i cudzy, w każdym statusie; przycisk
+        „Usuń” z pytaniem jest przy każdym cytacie."""
         cases = (
-            ('własny wolny', self.editor, self.editor, 'free', True),
-            ('własny w przygotowaniu', self.editor, self.editor, 'in_progress', False),
-            ('cudzy wolny', self.editor, self.other, 'free', False),
-            ('cudzy wrzucony – Social Media', self.social, self.other, 'posted', True),
+            ('własny wolny', self.social, self.social, 'free'),
+            ('cudzy wrzucony', self.social, self.other, 'posted'),
+            ('cudzy w przygotowaniu – koordynator', self.coordinator, self.other, 'in_progress'),
         )
-        for label, user, author, status, allowed in cases:
+        for label, user, author, status in cases:
             with self.subTest(label):
                 quote = SocialMediaQuote.objects.create(text=self.story, content=label, added_by=author, status=status)
                 self.client.force_login(user)
                 buttons = page_doc(self.client.get(URL)).xpath(
                     f'//form[@id="social-quote-form-{quote.pk}"]/button[@value="quote_delete"]/@data-confirm')
-                self.assertEqual(buttons, ['Usunąć cytat do „Smocze jajo”?'] if allowed else [])
-                response = self.change_quote(user, quote, 'quote_delete')
-                self.assertEqual(response.status_code, 302 if allowed else 403)
-                self.assertEqual(SocialMediaQuote.objects.filter(pk=quote.pk).exists(), not allowed)
+                self.assertEqual(buttons, ['Usunąć cytat do „Smocze jajo”?'])
+                self.assertEqual(self.change_quote(user, quote, 'quote_delete').status_code, 302)
+                self.assertFalse(SocialMediaQuote.objects.filter(pk=quote.pk).exists())
 
     def test_validation_keeps_section_open_and_rejects_texts_outside_list(self):
         """Pusty lub za długi cytat – 400 z błędem przy tekście, wpisaną treścią i rozwiniętą sekcją; tekst spoza listy
         (wycofany, nieistniejący) – 404, brak tekstu – 400; nic nie zostaje zapisane."""
-        self.client.force_login(self.editor)
+        self.client.force_login(self.social)
         cases = (
             ('pusty', self.story.pk, '   ', 400, 'Wpisz cytat.'),
             ('za długi', self.story.pk, 'x' * 2001, 400, 'Cytat może mieć najwyżej 2000 znaków.'),
@@ -542,7 +474,7 @@ class SocialMediaQuoteTests(SocialMediaDataMixin, TestCase):
     def test_stale_quote_form_is_rejected(self):
         """Zmiana statusu z nieaktualnym formularzem – 409 z aktualnymi danymi, bez nadpisania; ponowny zapis z nowym
         tokenem przechodzi. Usunięcie z nieaktualnym formularzem nie usuwa cytatu."""
-        quote = SocialMediaQuote.objects.create(text=self.story, content='Cytat', added_by=self.editor)
+        quote = SocialMediaQuote.objects.create(text=self.story, content='Cytat', added_by=self.other)
         self.client.force_login(self.social)
         stale = self.row_version(self.client.get(URL), f'social-quote-form-{quote.pk}')
         SocialMediaQuote.objects.filter(pk=quote.pk).update(status='posted', posted_on=datetime.date(2026, 10, 1))

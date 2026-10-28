@@ -1,0 +1,19 @@
+{% for plan in plans %}
+<fieldset class="module aligned cms-padded-module">
+<h2>{{ plan.role }}{% if plan.discord_name %} <small>(na serwerze: {{ plan.discord_name }})</small>{% endif %}</h2>
+<p><strong>Tryb: {{ plan.mode_label }}.</strong> Role w CMS-ie: {% for cms in plan.role.cms_roles.all %}{{ cms.name }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="cms-error-text">brak – nikt nie dostanie tej rangi</span>{% endfor %}. Mają już rangę: {{ plan.has }}.</p>
+{% if plan.missing_on_server %}<p class="errornote">Na serwerze Discorda nie ma rangi o ID {{ plan.role.role_id }} – popraw ID w ustawieniach rangi.</p>{% endif %}
+{% if plan.stale_approval %}<p class="errornote">Mapowanie zmieniono po zatwierdzeniu pełnej synchronizacji – do ponownego zatwierdzenia ranga jest tylko nadawana.</p>{% endif %}
+<h3>Dostaną rangę ({{ plan.grant|length }})</h3>
+{% if plan.grant %}<ul class="cms-compact-list">{% for entry in plan.grant %}<li><a href="{% url 'admin:people_person_change' entry.person.pk %}">{{ entry.person }}</a> – na serwerze: {{ entry.name|default:"–" }} <code>{{ entry.user_id }}</code></li>{% endfor %}</ul>{% else %}<p>Nikt.</p>{% endif %}
+<h3>{% if plan.applies_revoke %}Stracą rangę{% else %}Straciliby rangę przy pełnej synchronizacji – teraz jej NIE stracą{% endif %} ({{ plan.revoke|length }})</h3>
+{% if plan.revoke %}<ul class="cms-compact-list">{% for entry in plan.revoke %}<li><a href="{% url 'admin:people_person_change' entry.person.pk %}">{{ entry.person }}</a>{% if not entry.person.is_active or entry.person.is_external %} (poza ekipą){% endif %} – na serwerze: {{ entry.name|default:"–" }} <code>{{ entry.user_id }}</code></li>{% endfor %}</ul>{% else %}<p>Nikt.</p>{% endif %}
+<h3>Bez identyfikatora Discorda w CMS-ie ({{ plan.no_id|length }})</h3>
+{% if plan.no_id %}<ul class="cms-compact-list">{% for entry in plan.no_id %}<li><a href="{% url 'admin:people_person_change' entry.person.pk %}">{{ entry.person }}</a></li>{% endfor %}</ul><p class="help">Uzupełnij identyfikator na ekranie osoby albo w „Dopasuj po imieniu i nazwisku”.</p>{% else %}<p>Nikt.</p>{% endif %}
+<h3>Spoza serwera Discorda ({{ plan.not_on_server|length }})</h3>
+{% if plan.not_on_server %}<ul class="cms-compact-list">{% for entry in plan.not_on_server %}<li><a href="{% url 'admin:people_person_change' entry.person.pk %}">{{ entry.person }}</a> <code>{{ entry.user_id }}</code></li>{% endfor %}</ul><p class="help">Osoba nie dołączyła do serwera albo identyfikator jest błędny – ranga zostanie nadana, gdy dołączy (najbliższa synchronizacja).</p>{% else %}<p>Nikt.</p>{% endif %}
+<h3>Nierozpoznani członkowie serwera z tą rangą ({{ plan.unrecognized|length }})</h3>
+<p class="help"><strong>{{ unrecognized_rule }}</strong></p>
+{% if plan.unrecognized %}<ul class="cms-compact-list">{% for entry in plan.unrecognized %}<li>{{ entry.name|default:"–" }} <code>{{ entry.user_id }}</code></li>{% endfor %}</ul>{% else %}<p>Nikt.</p>{% endif %}
+</fieldset>
+{% endfor %}

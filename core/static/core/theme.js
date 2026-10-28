@@ -12,10 +12,8 @@
         const autumn = document.querySelector("[data-theme-autumn]");
         const update = () => {
             const current = document.documentElement.dataset.theme;
-            if (button) {
-                button.textContent = current === "dark" ? "Włącz jasny motyw" : "Włącz ciemny motyw";
-                button.setAttribute("aria-pressed", String(current === "dark"));
-            }
+            // Napis mówi, na jaki motyw przełącza przycisk (bez aria-pressed – zmienia się sam napis).
+            if (button) button.textContent = current === "dark" ? "Jasny motyw" : "Ciemny motyw";
             if (autumn) autumn.setAttribute("aria-pressed", String(current === "autumn"));
             const meta = document.querySelector('meta[name="theme-color"]');
             if (meta) meta.content = current === "autumn" ? "#503322" : "#172434";

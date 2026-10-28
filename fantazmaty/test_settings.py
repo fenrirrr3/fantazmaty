@@ -25,6 +25,9 @@ DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memor
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+# Bot Discorda zawsze wyłączony – testy włączają go przez override_settings z podstawionym HTTP.
+DISCORD_BOT_TOKEN = ""
+DISCORD_GUILD_ID = ""
 
 # Pliki robocze testów nie trafiają do var/ w katalogu projektu.
 _WORK_DIR = Path(tempfile.gettempdir()) / "fantazmaty-tests"

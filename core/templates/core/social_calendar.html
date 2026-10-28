@@ -1,0 +1,55 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Kalendarz Social Media | Fantazmaty CMS{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/social-media.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Social Media</h1><p class="page-description">Kalendarz wpisów: kto i co wrzuca danego dnia. Wpisy są informacyjne – nie blokują dnia, ale pokazują, że jest już zajęty. Kalendarz pokazuje też pozycje z listy, które mają datę.</p></header>
+{% include "core/includes/social_media_tabs.html" with social_tab="calendar" %}
+
+<section class="card social-calendar-card" aria-labelledby="social-calendar-heading">
+    <header class="section-header social-calendar-header">
+        <div><h2 id="social-calendar-heading">{{ month_title }}</h2><p>{% if month_count %}{{ month_count_text }} w tym miesiącu.{% else %}Brak wpisów w tym miesiącu.{% endif %}</p></div>
+        <nav class="actions social-calendar-nav" aria-label="Wybór miesiąca">
+            <a class="secondary-button small-button" href="{{ prev_url }}" rel="prev">‹ Poprzedni</a>
+            <a class="secondary-button small-button" href="{{ today_url }}"{% if is_current_month %} aria-current="date"{% endif %}>Dziś</a>
+            <a class="secondary-button small-button" href="{{ next_url }}" rel="next">Następny ›</a>
+            <form method="get" class="social-calendar-month-form"><label class="visually-hidden" for="social-calendar-month">Miesiąc</label><input id="social-calendar-month" type="month" name="month" value="{{ month_value }}" min="2000-01" max="2100-12" pattern="[0-9]{4}-[0-9]{2}" placeholder="RRRR-MM"><button class="secondary-button small-button" type="submit">Pokaż</button></form>
+        </nav>
+    </header>
+    <ul class="social-calendar-legend" aria-label="Rodzaje wpisów">{% for kind, label in kinds.items %}<li><span class="social-calendar-kind" data-kind="{{ kind }}">{{ label }}</span></li>{% endfor %}</ul>
+    <div class="social-calendar">
+        <ol class="social-calendar-weekdays" aria-hidden="true">{% for name in weekdays %}<li>{{ name }}</li>{% endfor %}</ol>
+        <ol class="social-calendar-grid" aria-label="Dni miesiąca {{ month_title }}">{% for week in weeks %}{% for day in week %}
+            <li id="social-day-{{ day.iso }}" class="social-calendar-day{% if not day.in_month %} is-outside{% endif %}{% if day.is_today %} is-today{% endif %}{% if day.is_past %} is-past{% endif %}{% if day.items %} is-busy{% endif %}{% if day.iso == busy_day %} is-selected{% endif %}"{% if day.is_today %} aria-current="date"{% endif %}>
+                <div class="social-calendar-day-header">
+                    <span class="social-calendar-date"><span class="social-calendar-weekday">{{ day.weekday }}, </span><span class="social-calendar-day-number">{{ day.date.day }}</span><span class="social-calendar-month-name"> {{ day.month_name }}</span>{% if day.is_today %} <span class="social-calendar-today">dziś</span>{% endif %}</span>
+                    {% if day.items %}<span class="record-counter" title="{{ day.count_text }}">{{ day.items|length }}<span class="visually-hidden"> – {{ day.count_text }}</span></span>{% endif %}
+                    <a class="social-calendar-add-link" href="{{ day.add_url }}" title="Dodaj wpis na {{ day.label }}"><span aria-hidden="true">+</span><span class="visually-hidden">Dodaj wpis na {{ day.label }}</span></a>
+                </div>
+                {% if day.items %}<ul class="social-calendar-items">{% for item in day.items %}
+                    <li class="social-calendar-item" data-kind="{{ item.kind }}"{% if item.entry %} id="social-calendar-entry-{{ item.entry.pk }}"{% endif %}>
+                        <span class="social-calendar-kind" data-kind="{{ item.kind }}">{{ item.kind_label }}</span>
+                        {% if item.url %}<a href="{{ item.url }}" class="social-calendar-title"{% if item.quote %} title="{{ item.quote }}"{% endif %}>{{ item.title }}</a>{% else %}<span class="social-calendar-title">{{ item.title }}</span>{% endif %}
+                        <span class="social-calendar-meta">{% if item.status %}{% include "core/includes/social_status_label.html" with status=item.status label=item.detail %}{% else %}{{ item.detail }}{% endif %}{% if item.author %} · {{ item.author }}{% endif %}</span>
+                        {% if item.can_change %}<a class="social-calendar-edit-link" href="{{ item.edit_url }}">Edytuj<span class="visually-hidden"> wpis „{{ item.title }}”</span></a>{% endif %}
+                    </li>{% endfor %}
+                </ul>{% endif %}
+            </li>{% endfor %}{% endfor %}
+        </ol>
+    </div>
+</section>
+
+{% if form %}<section class="card social-calendar-form-card" id="social-calendar-form" aria-labelledby="social-calendar-form-heading">
+    <header class="section-header"><div><h2 id="social-calendar-form-heading">{% if edit_entry %}Zmień wpis{% else %}Zaplanuj wpis{% endif %}</h2><p>{% if edit_entry %}Dodał(a): {{ edit_entry.added_by_name|default:"–" }}. Zmiana nie wysyła powiadomienia na Discordzie.{% else %}Wpisz się na dzień z krótką informacją, co wtedy idzie. Kilka wpisów na jeden dzień jest dozwolonych.{% endif %}</p></div></header>
+    <div class="card-body">
+        {% if busy_items %}<div class="message warning social-calendar-busy" role="status"><strong>{{ busy_day_label|capfirst }} – {% if busy_items|length == 1 %}jest już 1 wpis{% else %}są już wpisy ({{ busy_items|length }}){% endif %}:</strong><ul>{% for item in busy_items %}<li>{{ item.kind_label }}: {{ item.title }}{% if item.author %} ({{ item.author }}){% endif %}</li>{% endfor %}</ul>Możesz dodać kolejny – sprawdź tylko, czy wpisy sobie nie przeszkadzają.</div>{% endif %}
+        {% for error in form.non_field_errors %}<p class="form-error" role="alert">{{ error }}</p>{% endfor %}
+        <form method="post" action="{% url 'core:social_calendar' %}" class="social-media-add social-calendar-entry-form" data-warn-unsaved aria-labelledby="social-calendar-form-heading">{% csrf_token %}<input type="hidden" name="month" value="{{ month_value }}">{% if edit_entry %}<input type="hidden" name="entry" value="{{ edit_entry.pk }}"><input type="hidden" name="version" value="{{ edit_token }}">{% endif %}
+            <div class="form-field"><label for="social-calendar-day">Dzień</label><input id="social-calendar-day" type="date" name="day" value="{{ form.day.value|default_if_none:''|stringformat:'s' }}" min="2000-01-01" max="2100-12-31" required{% if form.errors.day %} aria-invalid="true"{% endif %}>{% for error in form.errors.day %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+            <div class="form-field social-media-description"><label for="social-calendar-description">Co idzie</label><input id="social-calendar-description" type="text" name="description" value="{{ form.description.value|default_if_none:'' }}" maxlength="{{ description_max_length }}" required placeholder="Np. cytat z „Latarnika”, zapowiedź naboru"{% if form.errors.description %} aria-invalid="true"{% endif %}>{% for error in form.errors.description %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+            <div class="form-field"><label for="social-calendar-platform">Gdzie</label><select id="social-calendar-platform" name="platform">{% for value, label in form.fields.platform.choices %}{% if value %}<option value="{{ value }}"{% if value == form.platform.value %} selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}</select>{% for error in form.errors.platform %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+            <div class="actions">{% if edit_entry %}<button class="primary-button" type="submit" name="action" value="edit">Zapisz</button><button class="danger-button" type="submit" name="action" value="delete" formnovalidate data-confirm="Usunąć wpis „{{ edit_entry.description }}”?">Usuń</button><a class="secondary-button" href="{{ cancel_url }}">Anuluj</a>{% else %}<button class="primary-button" type="submit" name="action" value="add">Dodaj wpis</button>{% endif %}</div>
+        </form>
+    </div>
+</section>{% endif %}
+{% endblock %}

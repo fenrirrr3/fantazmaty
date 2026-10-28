@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Strona główna</a> › <a href="{% url 'admin:core_discordrole_changelist' %}">Role Discorda</a> › <a href="{% url 'admin:core_discordrole_sync' %}">Synchronizacja rang</a> › {{ role }}</div>{% endblock %}
+{% block content %}
+{% if not configured %}<p class="errornote">{{ not_configured }}</p>{% endif %}
+<p>Podgląd pełnej synchronizacji rangi {{ role }} – nic nie zostało jeszcze zmienione. Po zatwierdzeniu CMS od razu wykona poniższy plan, a później będzie rangę nadawał i odbierał osobom z CMS-u według ich ról. Zmiana ID rangi albo ról CMS wymaga ponownego zatwierdzenia.</p>
+{% if no_roles %}<p class="errornote">Ranga nie ma przypisanych ról w CMS-ie – pełna synchronizacja odebrałaby ją wszystkim rozpoznanym osobom. Najpierw <a href="{% url 'admin:core_discordrole_change' role.pk %}">wybierz role w CMS-ie</a>.</p>{% endif %}
+{% if error %}<p class="errornote">{{ error }}</p>{% else %}
+{% include "admin/core/discordrole/plan.html" %}
+{% if not no_roles %}<form method="post">{% csrf_token %}<input type="hidden" name="token" value="{{ token }}">
+<div class="submit-row"><input type="submit" class="default" name="approve" value="Zatwierdź i włącz pełną synchronizację"> <a href="{% url 'admin:core_discordrole_sync' %}">Anuluj</a></div>
+</form>{% endif %}
+{% endif %}
+{% endblock %}

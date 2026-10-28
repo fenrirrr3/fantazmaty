@@ -1,12 +1,11 @@
 """Social Media: plan wpisów promocyjnych o opowiadaniach, lista innych wpisów i cytaty z opowiadań.
 
-Stronę widzi cały zespół. Opowiadania, Inne oraz status i datę cytatów widzą i zmieniają tylko superuser,
-koordynatorzy i rola „Social Media”; pozostali widzą wyłącznie Cytaty – dodają je i usuwają własne, dopóki mają
-status „Wolne”.
+Stronę (sekcję „Promocja” w menu) widzą i zmieniają tylko superuser, koordynatorzy i rola „Social Media”.
 Lista opowiadań domyślnie obejmuje antologie „Gotowe”; pole „Pokaż teksty niewydane”
 dokłada antologie w przygotowaniu. Zawsze pomijane są: antologie porzucone, powieści (rozdziały nie są
 osobnymi opowiadaniami), tomy Ekstraktów i teksty wycofane. Każdy wiersz zapisuje się osobno (formularz
 per wiersz), z podpisanym tokenem wersji – nieaktualny formularz nie nadpisze cudzej zmiany.
+Zakładka Kalendarz (pozycje z datą w widoku miesiąca) – core/views/social_calendar.py.
 """
 from collections import defaultdict
 from copy import copy
@@ -15,7 +14,6 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core import signing
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Case, CharField, Exists, F, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.db.models.functions import Coalesce
@@ -33,7 +31,7 @@ from core.edit_versions import version_of
 from core.filtering import positive_id
 from core.models import EditRevision, SocialMediaEntry, SocialMediaQuote, TextSocialMedia
 from core.pagination import paginate_items
-from core.permissions import can_manage_social_media, team_member_required
+from core.permissions import social_media_required
 from core.public_authors import name_matches, public_name
 from core.social_forms import (SocialMediaEntryForm, SocialMediaQuoteForm, SocialMediaQuoteStatusForm,
                                TextSocialMediaForm)
@@ -152,7 +150,7 @@ def _status_filter(rows, query):
     return rows.filter(social_status__in=statuses) if set(statuses) <= set(SocialMediaStatus.values) else rows.none()
 
 
-def _quote_rows(request, texts, manage, *, quote_form=None, quote_pk=None, add_quote_form=None, add_quote_pk=None):
+def _quote_rows(request, texts, *, quote_form=None, quote_pk=None, add_quote_form=None, add_quote_pk=None):
     """Wiersze sekcji Cytaty: tekst z formularzem nowego cytatu i jego cytaty (pobrane zbiorczo)."""
     quotes = defaultdict(list)
     for quote in SocialMediaQuote.objects.filter(text_id__in=[text.pk for text in texts]).select_related(
@@ -164,14 +162,13 @@ def _quote_rows(request, texts, manage, *, quote_form=None, quote_pk=None, add_q
         items = []
         for quote in quotes[text.pk]:
             bound = quote_form is not None and quote.pk == quote_pk
-            can_delete = manage or (quote.added_by_id == request.user.pk and quote.status == SocialMediaStatus.FREE)
             items.append({
-                'quote': quote, 'author': person_name(quote.added_by) or quote.added_by_name, 'can_delete': can_delete,
+                'quote': quote, 'author': person_name(quote.added_by) or quote.added_by_name,
                 'values': {name: quote_form.data.get(name, '') for name in ('status', 'posted_on')} if bound else
                 {'status': quote.status, 'posted_on': quote.posted_on.isoformat()},
                 'errors': quote_form.errors if bound else {},
                 'non_field_errors': quote_form.non_field_errors() if bound else [],
-                'token': _token(request.user, 'quote', quote.pk, versions.get(quote.pk, 0)) if manage or can_delete else '',
+                'token': _token(request.user, 'quote', quote.pk, versions.get(quote.pk, 0)),
             })
         adding = add_quote_form is not None and text.pk == add_quote_pk
         rows.append({
@@ -183,7 +180,7 @@ def _quote_rows(request, texts, manage, *, quote_form=None, quote_pk=None, add_q
 
 
 def _manage_context(request, query, list_request, all_rows, *, text_form, text_pk, entry_form, entry_pk, add_form):
-    """Sekcje Opowiadania i Inne (tylko dla osób z prawem edycji – pozostali ich nie widzą)."""
+    """Sekcje Opowiadania i Inne."""
     page = paginate_items(list_request, _status_filter(all_rows, query))
     texts = list(page.object_list)
     versions = _versions(TextSocialMedia, [text.social_media.pk for text in texts if _record(text)])
@@ -212,7 +209,8 @@ def _manage_context(request, query, list_request, all_rows, *, text_form, text_p
         'page_obj': page, 'rows': page.object_list, 'entry_rows': entry_rows,
         'add_form': add_form or SocialMediaEntryForm(auto_id='social-add-%s'),
         'add_values': _bound_values(add_form) if add_form is not None else _values(None),
-        'open_other': bool(request.session.pop(OPEN_OTHER, False)) or entry_form is not None or (
+        # ?open=other – odnośnik z kalendarza do wpisu w „Inne”.
+        'open_other': bool(request.session.pop(OPEN_OTHER, False)) or query.get('open') == 'other' or entry_form is not None or (
             add_form is not None and bool(add_form.errors)),
         'selected_statuses': query.getlist('status'),
     }
@@ -220,23 +218,21 @@ def _manage_context(request, query, list_request, all_rows, *, text_form, text_p
 
 def _render(request, query, *, text_form=None, text_pk=None, entry_form=None, entry_pk=None, add_form=None,
             quote_form=None, quote_pk=None, add_quote_form=None, add_quote_pk=None, status=200):
-    manage = can_manage_social_media(request.user)
     list_request = copy(request)
     list_request.GET = query
     scope, all_rows, unpublished = _text_queryset(query)
     context = _manage_context(request, query, list_request, all_rows, text_form=text_form, text_pk=text_pk,
-                              entry_form=entry_form, entry_pk=entry_pk, add_form=add_form) if manage else {}
+                              entry_form=entry_form, entry_pk=entry_pk, add_form=add_form)
     # Cytaty: ten sam zakres i wyszukiwanie co Opowiadania (bez filtra statusu tekstu), osobna paginacja.
-    # Osoby bez prawa edycji widzą tylko tę sekcję – od razu rozwiniętą.
     quote_page = paginate_items(list_request, all_rows, page_param='quotes_page', size_param='quotes_page_size',
                                 sort_param='quotes_sort', anchor='#social-quotes')
-    quote_page.object_list = _quote_rows(request, list(quote_page.object_list), manage, quote_form=quote_form,
+    quote_page.object_list = _quote_rows(request, list(quote_page.object_list), quote_form=quote_form,
                                          quote_pk=quote_pk, add_quote_form=add_quote_form, add_quote_pk=add_quote_pk)
-    open_quotes = bool(request.session.pop(OPEN_QUOTES, False)) or not manage or quote_form is not None or (
+    open_quotes = bool(request.session.pop(OPEN_QUOTES, False)) or quote_form is not None or (
         add_quote_form is not None) or any(key in query for key in QUOTE_PARAMS)
     anthologies = Anthology.objects.filter(pk__in=scope.order_by().values('anthology_id')).only('pk', 'title').order_by('title', 'pk')
     return render(request, 'core/social_media.html', {
-        **context, 'can_manage': manage, 'return_query': query.urlencode(), 'unpublished': unpublished,
+        **context, 'return_query': query.urlencode(), 'unpublished': unpublished,
         'quote_page': quote_page, 'quote_rows': quote_page.object_list, 'open_quotes': open_quotes,
         'quote_count': SocialMediaQuote.objects.filter(text__in=all_rows.order_by().values('pk')).count(),
         'quote_max_length': SocialMediaQuote._meta.get_field('content').max_length,
@@ -346,8 +342,8 @@ def _add_quote(request, query):
     return redirect(list_url(query, f'social-quote-text-{text.pk}'))
 
 
-def _change_quote(request, query, action, manage):
-    """Status i data cytatu – tylko Social Media; usunięcie – Social Media albo autor cytatu ze statusem „Wolne”."""
+def _change_quote(request, query, action):
+    """Status, data i usunięcie cytatu (stronę widzą tylko osoby od Social Media)."""
     quote_pk = positive_id(request.POST.get('quote'))
     if quote_pk is None:
         return HttpResponseBadRequest('Nie wskazano cytatu.')
@@ -355,10 +351,6 @@ def _change_quote(request, query, action, manage):
         quote = SocialMediaQuote.objects.select_for_update().select_related('text').filter(pk=quote_pk).first()
         if quote is None:
             raise Http404('Cytat nie istnieje.')
-        own_free = quote.added_by_id == request.user.pk and quote.status == SocialMediaStatus.FREE
-        if not manage and not (action == 'quote_delete' and own_free):
-            raise PermissionDenied('Status i datę cytatu zmienia osoba od Social Media; usunąć można własny cytat, '
-                                   'dopóki ma status „Wolne”.')
         title, anchor = quote.text.title, f'social-quote-text-{quote.text_id}'
         if not _token_matches(request.POST.get('version'), request.user, 'quote', quote.pk, version_of(quote)):
             if action == 'quote_delete':
@@ -391,21 +383,18 @@ def _change_quote(request, query, action, manage):
 @never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
-@team_member_required
+@social_media_required
 def social_media(request):
     if request.method == 'GET':
         return _render(request, request.GET)
     query = list_query(request.POST.get('return_query'))
     action = request.POST.get('action')
-    manage = can_manage_social_media(request.user)
     if action == 'quote_add':
         return _add_quote(request, query)
     if action in ('quote_edit', 'quote_delete'):
-        return _change_quote(request, query, action, manage)
+        return _change_quote(request, query, action)
     if action not in ('text', 'entry_add', 'entry_edit', 'entry_delete'):
         return HttpResponseBadRequest('Nieznana operacja.')
-    if not manage:
-        raise PermissionDenied('Opowiadania i inne wpisy zmienia osoba od Social Media albo koordynator.')
     if action == 'text':
         return _save_text(request, query)
     return _save_entry(request, query, action)

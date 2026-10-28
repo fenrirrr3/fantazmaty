@@ -1,4 +1,5 @@
-"""Panel admina: reguły powiadomień Discord, role, historia wysyłek i testowe wysyłanie."""
+"""Panel admina: reguły powiadomień Discord, role (także rangi nadawane przez CMS – podgląd, synchronizacja,
+dopasowanie osób, historia), link zapraszający, historia wysyłek i testowe wysyłanie."""
 import random
 
 from django import forms
@@ -6,15 +7,19 @@ from django.contrib import admin, messages
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
+from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 
 from authors.admin import SuperuserOnlyAdminMixin
 from core.discord_notifications import (ANONYMOUS_AUTHOR, AUDIOBOOK, DISABLED_NOTE, DISCORD_LIMIT, EVENT_COMPLETED,
-                                        EVENT_STARTED, REMINDABLE, REMINDER_DAYS, REVIEW, STAGE_EVENTS, WAITING,
+                                        EVENT_STARTED, REMINDABLE, REMINDER_DAYS, REVIEW, SOCIAL_CALENDAR,
+                                        STAGE_EVENTS, WAITING, calendar_context, calendar_link,
                                         configured_channel_names, discord_roles, mention_text, parse_mention,
                                         preview_link, render, rule_problems, send_item, with_link)
+from core.social_models import SocialCalendarEntry
 from core.models import DiscordNotification, DiscordRole, NotificationRule, NotificationTemplate
-from core.notification_models import TEMPLATE_TAGS
+from core.admin_access import ReadOnlyAdminMixin, SingleRecordAdminMixin
+from core.notification_models import TEMPLATE_TAGS, DiscordRoleChange, DiscordSettings
 from workflow.models import WorkflowStage
 
 TAGS_HELP = 'Tagi: ' + ', '.join(f'[{tag}] – {label}' for tag, label in TEMPLATE_TAGS.items()) + '.'
@@ -31,7 +36,10 @@ AUDIOBOOK_HELP = ('Jedna wiadomość po każdej zmianie w produkcji audiobooka: 
                   'i zakończenie korekty, przypisanie korektora, poprawa dat i wykonawców etapów, usunięcie etapu. '
                   'Bez wiadomości: edycja lektora, montażysty, uwag i publikacji. [zmiana] – opis zmiany, '
                   '[status] – status po zmianie, [osoba] – kto wprowadził zmianę, [link] – strona audiobooka.')
-TRIGGER_HELP = {STAGE_EVENTS: COMPLETED_HELP, AUDIOBOOK: AUDIOBOOK_HELP}
+SOCIAL_CALENDAR_HELP = ('Jedna wiadomość po dodaniu wpisu do kalendarza Social Media (bez wiadomości: edycja '
+                        'i usunięcie wpisu). [data] – dzień wpisu, [opis] – co idzie, [platforma] – gdzie, '
+                        '[osoba] – kto dodał wpis, [link] – ten dzień w kalendarzu.')
+TRIGGER_HELP = {STAGE_EVENTS: COMPLETED_HELP, AUDIOBOOK: AUDIOBOOK_HELP, SOCIAL_CALENDAR: SOCIAL_CALENDAR_HELP}
 
 
 class NotificationRuleForm(forms.ModelForm):
@@ -86,12 +94,6 @@ class NotificationTemplateInline(admin.StackedInline):
             field.widget = forms.Textarea(attrs={'rows': 3, 'cols': 90})
             field.help_text = 'Tagi: ' + ' '.join(f'[{tag}]' for tag in TEMPLATE_TAGS) + ' – opis tagów i testowa wysyłka na liście powiadomień.'
         return field
-
-
-@admin.register(DiscordRole)
-class DiscordRoleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ('__str__', 'role_id')
-    search_fields = ('name',)
 
 
 @admin.register(NotificationRule)
@@ -198,12 +200,21 @@ class TestNotificationForm(forms.Form):
     stage = forms.CharField(label='[etap] (dla „Rozpoczęcie i zakończenie etapu”)', max_length=100, initial='Redakcja',
                             required=False,
                             help_text='Przy pozostałych wiadomościach [etap] przyjmuje nazwę etapu z przycisku.')
-    person = forms.CharField(label='[osoba] (dla „Rozpoczęcie i zakończenie etapu” i „Produkcja audiobooka”)',
+    person = forms.CharField(label='[osoba] (dla „Rozpoczęcie i zakończenie etapu”, „Produkcja audiobooka” '
+                                   'i kalendarza Social Media)',
                              max_length=200, initial='Jan Kowalski', required=False)
     change = forms.CharField(label='[zmiana] (dla „Produkcja audiobooka”)', max_length=300,
                              initial='Zmieniono status: Montaż.', required=False)
     audio_status = forms.CharField(label='[status] (dla „Produkcja audiobooka”)', max_length=100, initial='Montaż',
                                    required=False)
+    calendar_day = forms.DateField(label='[data] (dla kalendarza Social Media)', required=False,
+                                   widget=forms.DateInput(attrs={'type': 'date'}),
+                                   help_text='Puste – dzisiejsza data.')
+    calendar_description = forms.CharField(label='[opis] (dla kalendarza Social Media)', max_length=300,
+                                           initial='Cytat z „Latarnika”', required=False)
+    calendar_platform = forms.ChoiceField(label='[platforma] (dla kalendarza Social Media)', required=False,
+                                          choices=SocialCalendarEntry.Platform.choices,
+                                          initial=SocialCalendarEntry.Platform.FACEBOOK)
     days = forms.TypedChoiceField(label='[dni] (dla przypomnień)', choices=[(d, d) for d in REMINDER_DAYS], coerce=int,
                                   initial=REMINDER_DAYS[0], required=False, empty_value=REMINDER_DAYS[0])
     mark_test = forms.BooleanField(label='Dopisz „[TEST]” na początku wiadomości', initial=True, required=False)
@@ -254,6 +265,14 @@ def send_test(rule, data, base=None):
     # Testowy tekst nie istnieje w bazie – odnośnik prowadzi do pustego podglądu (nr 0).
     link = (preview_link(review_id=0) if review else preview_link(audiobook_id=0) if audiobook
             else preview_link(text_id=0))
+    if rule.trigger == SOCIAL_CALENDAR:
+        # Wpis kalendarza nie dotyczy tekstu – jak przy zwykłym zdarzeniu tylko tagi kalendarza i odnośnik do dnia.
+        day = data.get('calendar_day') or timezone.localdate()
+        platform = data.get('calendar_platform') or SocialCalendarEntry.Platform.FACEBOOK
+        context = calendar_context(day=day, description=data.get('calendar_description', ''),
+                                   platform=SocialCalendarEntry.Platform(platform).label,
+                                   person=data.get('person', ''))
+        link = calendar_link(day)
     content = render(random.choice(templates), context, mention_text(role_ids, here), link)
     if data.get('mark_test'):
         content = '[TEST] ' + content
@@ -289,3 +308,228 @@ class DiscordNotificationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+# Rangi Discorda: mapowanie, podgląd i synchronizacja, dopasowanie osób, historia, link zapraszający
+
+class DiscordRoleForm(forms.ModelForm):
+    class Meta:
+        model = DiscordRole
+        fields = ('name', 'role_id', 'cms_roles', 'sync_mode')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields['sync_mode']
+        if self.instance.sync_mode != DiscordRole.SyncMode.FULL:
+            # Pełną synchronizację włącza tylko „Zatwierdź i włącz” po obejrzeniu podglądu.
+            field.choices = [choice for choice in field.choices if choice[0] != DiscordRole.SyncMode.FULL]
+            field.help_text = ('Pełną synchronizację (z odbieraniem rangi) włączysz przyciskiem „Zatwierdź i włącz” '
+                               'na stronie podglądu – lista „Role Discorda” → „Synchronizacja rang”.')
+        else:
+            field.help_text = ('Zmiana ID rangi albo ról CMS wymaga ponownego zatwierdzenia podglądu – do tego czasu '
+                               'ranga jest tylko nadawana.')
+
+    def clean(self):
+        cleaned = super().clean()
+        mode, role_id = cleaned.get('sync_mode'), cleaned.get('role_id')
+        if mode and mode != DiscordRole.SyncMode.OFF and role_id:
+            other = (DiscordRole.objects.filter(role_id=role_id).exclude(sync_mode=DiscordRole.SyncMode.OFF)
+                     .exclude(pk=self.instance.pk).first())
+            if other:
+                self.add_error('sync_mode', f'Tę rangę (ID {role_id}) nadaje już {other} – wyłącz nadawanie '
+                                            'w jednej z nich.')
+        return cleaned
+
+
+class DiscordRoleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    form = DiscordRoleForm
+    list_display = ('__str__', 'role_id', 'cms_role_names', 'mode_display')
+    list_filter = ('sync_mode',)
+    search_fields = ('name',)
+    filter_horizontal = ('cms_roles',)
+    fields = ('name', 'role_id', 'cms_roles', 'sync_mode', 'approval')
+    readonly_fields = ('approval',)
+    change_list_template = 'admin/core/discordrole/change_list.html'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('cms_roles')
+
+    @admin.display(description='Role w CMS-ie')
+    def cms_role_names(self, obj):
+        return ', '.join(role.name for role in obj.cms_roles.all()) or '–'
+
+    @admin.display(description='Nadawanie przez CMS')
+    def mode_display(self, obj):
+        if obj.sync_mode == DiscordRole.SyncMode.FULL and not obj.full_sync_approved:
+            return format_html('{} <div class="cms-error-text">Mapowanie zmieniono po zatwierdzeniu – działa tylko '
+                               'nadawanie, zatwierdź podgląd ponownie.</div>', obj.get_sync_mode_display())
+        return obj.get_sync_mode_display()
+
+    @admin.display(description='Zatwierdzenie pełnej synchronizacji')
+    def approval(self, obj):
+        if not obj or not obj.pk:
+            return 'Najpierw zapisz rangę, potem obejrzyj podgląd w „Synchronizacja rang”.'
+        link = reverse('admin:core_discordrole_approve', args=[obj.pk])
+        if obj.full_sync_approved and obj.full_sync_approved_at:
+            who = obj.full_sync_approved_by or '–'
+            return format_html('Zatwierdzono {} ({}). <a href="{}">Podgląd pełnej synchronizacji</a>',
+                               timezone.localtime(obj.full_sync_approved_at).strftime('%d.%m.%Y %H:%M'), who, link)
+        return format_html('Nie zatwierdzono. <a href="{}">Podgląd i zatwierdzenie pełnej synchronizacji</a>', link)
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        role = form.instance
+        role = DiscordRole.objects.prefetch_related('cms_roles').get(pk=role.pk)
+        if role.sync_mode == DiscordRole.SyncMode.FULL and not role.full_sync_approved:
+            self.message_user(request, f'{role}: zmieniono mapowanie rangi w pełnej synchronizacji – do ponownego '
+                                       'zatwierdzenia podglądu CMS rangę tylko nadaje.', messages.WARNING)
+        elif role.sync_mode != DiscordRole.SyncMode.OFF:
+            self.message_user(request, 'Mapowanie zadziała przy najbliższej zmianie osób, synchronizacji z panelu '
+                                       '(„Synchronizacja rang”) albo zadaniu sync_discord_roles.', messages.INFO)
+
+    def get_urls(self):
+        view = self.admin_site.admin_view
+        return [path('synchronizacja/', view(self.sync_view), name='core_discordrole_sync'),
+                path('<int:role_pk>/zatwierdz/', view(self.approve_view), name='core_discordrole_approve'),
+                path('dopasuj/', view(self.match_view), name='core_discordrole_match'),
+                *super().get_urls()]
+
+    def _context(self, request, title, **context):
+        from people import discord_api
+        return {**self.admin_site.each_context(request), 'opts': self.model._meta, 'title': title,
+                'configured': discord_api.is_configured(), 'not_configured': discord_api.NOT_CONFIGURED, **context}
+
+    @staticmethod
+    def _token(digest):
+        from django.core import signing
+        return signing.dumps(digest, salt='people.discord_sync')
+
+    @staticmethod
+    def _confirmed(request):
+        from django.conf import settings
+        from django.core import signing
+        try:
+            return signing.loads(request.POST.get('token', ''), salt='people.discord_sync',
+                                 max_age=settings.SESSION_COOKIE_AGE)
+        except signing.BadSignature:
+            return ''
+
+    def _report(self, request, outcome):
+        from people.discord_sync import describe
+        if outcome.error:
+            self.message_user(request, outcome.error, messages.ERROR)
+            return
+        if outcome.stale:
+            self.message_user(request, 'Stan na Discordzie albo w CMS-ie zmienił się od podglądu – sprawdź nowy podgląd '
+                                       'i potwierdź ponownie.', messages.WARNING)
+            return
+        for change in outcome.changes:
+            level = messages.ERROR if change.result == DiscordRoleChange.Result.ERROR else messages.SUCCESS
+            self.message_user(request, describe(change), level)
+        if not outcome.changes:
+            self.message_user(request, 'Rangi są zgodne z CMS-em – nic nie zmieniono.', messages.SUCCESS)
+
+    def sync_view(self, request):
+        """Przegląd: podgląd wszystkich zarządzanych rang i „Synchronizuj teraz” (wykonuje dokładnie pokazany plan)."""
+        from people.discord_sync import UNRECOGNIZED_RULE, managed_roles, plans_digest, preview, synchronize
+        if not self.has_superuser_access(request):
+            return redirect('admin:index')
+        if request.method == 'POST':
+            outcome = synchronize(source=DiscordRoleChange.Source.PANEL, actor=request.user,
+                                  expected=self._confirmed(request))
+            self._report(request, outcome)
+            if not outcome.stale:
+                return redirect('admin:core_discordrole_sync')
+        roles = managed_roles()
+        plans, error = preview(roles) if roles else ([], '')
+        errors = DiscordRoleChange.objects.filter(result=DiscordRoleChange.Result.ERROR)
+        off = DiscordRole.objects.filter(sync_mode=DiscordRole.SyncMode.OFF).order_by('name')
+        return TemplateResponse(request, 'admin/core/discordrole/sync.html', self._context(
+            request, 'Synchronizacja rang Discorda', plans=plans, error=error, roles=roles, off_roles=off,
+            token=self._token(plans_digest(plans)), unrecognized_rule=UNRECOGNIZED_RULE,
+            pending_errors=errors.count(), recent=DiscordRoleChange.objects.select_related('actor')[:10]))
+
+    def approve_view(self, request, role_pk):
+        """Podgląd rangi z odbieraniem i „Zatwierdź i włącz pełną synchronizację” (zapis zatwierdzenia i wykonanie)."""
+        from django.shortcuts import get_object_or_404
+        from people.discord_sync import UNRECOGNIZED_RULE, approval_preview, approve_full_sync, plans_digest
+        if not self.has_superuser_access(request):
+            return redirect('admin:index')
+        role = get_object_or_404(DiscordRole, pk=role_pk)
+        if request.method == 'POST':
+            outcome = approve_full_sync(role, request.user, expected=self._confirmed(request))
+            self._report(request, outcome)
+            if not (outcome.error or outcome.stale):
+                self.message_user(request, f'{role}: włączono pełną synchronizację.', messages.SUCCESS)
+                return redirect('admin:core_discordrole_sync')
+        plans, error = approval_preview(role)
+        return TemplateResponse(request, 'admin/core/discordrole/approve.html', self._context(
+            request, f'Pełna synchronizacja rangi {role}', role=role, plans=plans, error=error,
+            token=self._token(plans_digest(plans)), unrecognized_rule=UNRECOGNIZED_RULE,
+            no_roles=not role.cms_roles.exists()))
+
+    def match_view(self, request):
+        """„Dopasuj po imieniu i nazwisku”: propozycje z listy członków serwera; zapis tylko zaznaczonych."""
+        from people import discord_api, discord_matching
+        from people.discord_sync import admin_messages, report_to
+        if not self.has_superuser_access(request):
+            return redirect('admin:index')
+        matching, error = None, ''
+        if discord_api.is_configured():
+            try:
+                matching = discord_matching.match(discord_api.DiscordClient().members())
+            except discord_api.DiscordError as exception:
+                error = str(exception)
+        if request.method == 'POST' and matching is not None:
+            chosen = {}
+            for name, value in request.POST.items():
+                if name.startswith('link_') and name[5:].isdigit() and value:
+                    chosen[int(name[5:])] = value
+            replace = {int(value) for value in request.POST.getlist('replace') if value.isdigit()}
+            from django.db import transaction
+            with transaction.atomic():
+                report_to(request, admin_messages(self, request))
+                saved, errors = discord_matching.apply(matching, chosen, replace)
+            for text in errors:
+                self.message_user(request, text, messages.ERROR)
+            if saved:
+                self.message_user(request, 'Zapisano identyfikator Discorda: ' + ', '.join(map(str, saved)) + '.',
+                                  messages.SUCCESS)
+            elif not errors:
+                self.message_user(request, 'Nie zaznaczono żadnej propozycji.', messages.WARNING)
+            return redirect('admin:core_discordrole_match')
+        return TemplateResponse(request, 'admin/core/discordrole/match.html', self._context(
+            request, 'Dopasuj osoby do kont Discorda', matching=matching, error=error))
+
+
+admin.site.register(DiscordRole, DiscordRoleAdmin)
+
+
+@admin.register(DiscordRoleChange)
+class DiscordRoleChangeAdmin(ReadOnlyAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    """Historia nadań i odebrań rang (tylko do odczytu)."""
+    list_display = ('created_at', 'person_display', 'role_label', 'action', 'result', 'reason', 'source', 'actor',
+                    'short_response')
+    # Filtr dat zamiast date_hierarchy: hierarchia po DateTimeField wymaga w MySQL tabel stref czasowych.
+    list_filter = ('created_at', 'result', 'action', 'source', 'discord_role')
+    search_fields = ('person_label', 'discord_user_id', 'role_label', 'reason')
+    list_select_related = ('person', 'actor')
+    readonly_fields = ('created_at', 'person', 'person_label', 'discord_user_id', 'discord_role', 'role_label',
+                       'role_id', 'action', 'result', 'reason', 'source', 'actor', 'response')
+    fields = readonly_fields
+
+    @admin.display(description='osoba', ordering='person_label')
+    def person_display(self, obj):
+        if obj.person_id:
+            return format_html('<a href="{}">{}</a>', reverse('admin:people_person_change', args=[obj.person_id]),
+                               obj.person_label or obj.person)
+        return obj.person_label or f'konto {obj.discord_user_id} (bez osoby)'
+
+    @admin.display(description='odpowiedź')
+    def short_response(self, obj):
+        return obj.response[:120] or '–'
+
+
+@admin.register(DiscordSettings)
+class DiscordSettingsAdmin(SingleRecordAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    fields = ('invite_url',)

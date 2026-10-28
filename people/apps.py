@@ -12,4 +12,4 @@ class PeopleConfig(AppConfig):
         pre_save.connect(remember_person_row, sender=Person, dispatch_uid="people-person-previous-row")
         pre_save.connect(remember_role_people, sender=Role, dispatch_uid="people-role-previous-people")
         pre_delete.connect(remember_role_people, sender=Role, dispatch_uid="people-role-deleted-people")
-        from . import dropbox_access, identity, signals  # noqa: F401
+        from . import discord_sync, dropbox_access, identity, signals  # noqa: F401

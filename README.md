@@ -142,6 +142,51 @@ Pole antologii „Powiadomienia Discord” (strona antologii lub powieści – k
 przypomnienia, produkcja audiobooków), „Tylko rozpoczęcia i zakończenia etapów” – wyłącznie ta reguła. Zgłoszeń do
 recenzji i testów z panelu to nie dotyczy. `python manage.py discord_diagnose` wypisuje antologie z ograniczeniem.
 
+## Rangi Discorda
+
+CMS może nadawać i odbierać rangi na serwerze Discorda według ról osób w CMS-ie (bot, tylko REST API – bez
+stałego połączenia, więc działa na PythonAnywhere). Zarządza WYŁĄCZNIE rangami z mapowania i WYŁĄCZNIE członkami
+serwera połączonymi z osobą w CMS-ie; innych rang i nierozpoznanych członków serwera nie rusza.
+
+**Bot (jednorazowo):**
+1. https://discord.com/developers/applications → *New Application* → zakładka *Bot*: *Reset Token* i skopiuj token.
+   Na tej samej stronie w *Privileged Gateway Intents* włącz **Server Members Intent** (bez tego lista członków
+   zwraca błąd 403).
+2. Zakładka *OAuth2 → URL Generator*: zakres `bot`, uprawnienie **Manage Roles** (Zarządzanie rolami); otwórz
+   wygenerowany adres i dodaj bota do serwera.
+3. Na serwerze: *Ustawienia serwera → Role* – przeciągnij rangę bota **nad** wszystkie rangi, którymi ma zarządzać
+   CMS (bot nie zmieni rangi wyższej od własnej – błąd 403 „hierarchia rang”).
+4. ID serwera: *Ustawienia użytkownika → Zaawansowane → Tryb dewelopera*, potem prawy przycisk na serwerze →
+   *Kopiuj ID serwera*.
+5. W `.env` na serwerze: `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID` i przeładuj aplikację (*Reload*). Bez nich funkcja
+   jest wyłączona (panel pokazuje komunikat), a zmiany osób nie są wysyłane.
+6. Zadanie zaplanowane (PythonAnywhere → *Tasks*, np. codziennie): `python manage.py sync_discord_roles` –
+   wyrównuje rozjazdy i ponawia błędy (`--dry-run` wypisuje plan bez zmian).
+
+**Mapowanie:** panel admina → „Role Discorda” (te same, co do oznaczeń w powiadomieniach) – przy randze „role
+w CMS-ie” (członkowie ekipy z którąkolwiek z nich mają mieć rangę) i tryb: „Wyłączona” (tylko oznaczenia),
+„Tylko nadawanie” (dodaje brakującym, nikomu nie zabiera), „Pełna synchronizacja” (nadaje i odbiera) – włączana
+wyłącznie przyciskiem „Zatwierdź i włącz” po obejrzeniu podglądu; zmiana ID rangi albo ról CMS wymaga ponownego
+zatwierdzenia (do tego czasu ranga jest tylko nadawana).
+
+**Identyfikator Discorda osoby:** pole na ekranie osoby (17–20 cyfr: prawy przycisk na osobie → *Kopiuj ID
+użytkownika*) albo „Role Discorda” → „Dopasuj po imieniu i nazwisku” – propozycje z listy członków serwera
+(pseudonim na serwerze, potem nazwa globalna i nazwa użytkownika; bez wielkości liter, polskie znaki rozróżniane):
+pewne, niejednoznaczne i bez dopasowania. Zapisywane są tylko zaznaczone; istniejący identyfikator zmienia tylko
+zaznaczone „zastąp”.
+
+**Synchronizacja:** po zmianie ról osoby, odejściu z ekipy (także „Zewnętrzny”, zablokowane konto, usunięcie osoby)
+i zmianie identyfikatora – po zatwierdzeniu zapisu, z komunikatem w panelu. Błąd Discorda nie blokuje zapisu
+w CMS-ie: trafia do „Discord – historia rang” jako błąd do ponowienia. „Role Discorda” → „Synchronizacja rang”:
+podgląd (kto dostanie, kto straci, kto nie ma identyfikatora, kogo nie ma na serwerze, nierozpoznani z rangą)
+i „Synchronizuj teraz” (wykonuje dokładnie pokazany plan). Historia: każda operacja z osobą, rangą, wynikiem,
+powodem, wywołaniem i odpowiedzią Discorda; powód widać też w dzienniku zmian serwera Discorda.
+
+**Zaproszenie na Discorda:** „Discord – ustawienia (zaproszenie)” – link `https://discord.gg/…` albo
+`https://discord.com/invite/…` (najlepiej bez wygasania). Z linkiem przy zaproszeniu do CMS-u (nowe konto, ekran
+osoby, przycisk „Wyślij zaproszenie”) jest opcja „Zaproś też na Discorda” (domyślnie zaznaczona) – link trafia do
+maila. Bez linku opcja jest nieaktywna.
+
 ## Udostępnianie folderów Dropbox
 
 CMS nadaje członkom zespołu dostęp do wybranych folderów Dropbox (poziom „Edycja” albo „Odczyt”) i odbiera go,

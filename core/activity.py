@@ -62,6 +62,7 @@ LABELS = {
     'translation_person_detail': 'Profil autora zagranicznego lub tłumacza', 'translation_list': 'Tłumaczenia',
     'translation_detail': 'Podgląd tłumaczenia', 'set_translators': 'Zmiana tłumaczy',
     'tag_list': 'Tagi', 'update_text_tags': 'Zapis tagów i gatunków', 'social_media': 'Social Media',
+    'social_calendar': 'Kalendarz Social Media',
     'skip_workflow_stage': 'Pominięcie etapu', 'link_text_review': 'Powiązanie tekstu z recenzją',
     'cancel_workflow_repetition': 'Anulowanie powtórzenia etapu', 'handoff_workflow_stage': 'Przekazanie pracy',
     'change_scheduled_workflow_stage': 'Zmiana terminu etapu', 'program_job': 'Postęp pracy programu',
@@ -86,7 +87,7 @@ def describe_request(match, method):
     name = match.url_name or getattr(match.func, '__name__', '')
     label = LABELS.get(name, 'Panel administracyjny' if match.namespace == 'admin' else 'Strona CMS')
     if method == 'POST':
-        label = {'assigned_review_detail':'Zapis oceny recenzenta', 'my_vacations':'Dodanie urlopu', 'anthology_corrections':'Zgłoszenie uwagi do antologii', 'social_media':'Zapis wpisu Social Media'}.get(name, label)
+        label = {'assigned_review_detail':'Zapis oceny recenzenta', 'my_vacations':'Dodanie urlopu', 'anthology_corrections':'Zgłoszenie uwagi do antologii', 'social_media':'Zapis wpisu Social Media', 'social_calendar':'Zapis wpisu w kalendarzu Social Media'}.get(name, label)
     from core.activity_targets import target_for_match
     target = target_for_match(match, lookup=False)
     if match.namespace == 'admin':

@@ -37,6 +37,15 @@ class AudioDescriptionAdminTests(AudioDescriptionTestData, TestCase):
         form = AudioDescriptionAdminForm(instance=self.description)
         self.assertIn(person, form.fields['controllers'].queryset)
 
+    def test_admin_form_offers_marked_external_and_inactive_consultants(self):
+        """Konsultacja w adminie: osoby spoza ekipy i nieaktywne bez historii są do wyboru, z oznaczeniem."""
+        external = Person.objects.create(first_name='Spoza', last_name='Ekipy', is_external=True)
+        former = Person.objects.create(first_name='Dawna', last_name='Osoba', is_active=False)
+        labels = dict(AudioDescriptionAdminForm(instance=self.description).fields['controllers'].choices)
+        labels = {str(value): label for value, label in labels.items()}
+        self.assertEqual(labels[str(external.pk)], 'Spoza Ekipy – spoza ekipy')
+        self.assertEqual(labels[str(former.pk)], 'Dawna Osoba – nieaktywny')
+
     def test_admin_list_query_count_does_not_grow_with_descriptions(self):
         """Lista audiodeskrypcji z kolumną „Wykonawca i status”: 1 i 4 antologie – ta sama liczba zapytań,
         a kolumna pokazuje wykonawcę i status zadania każdego wiersza."""

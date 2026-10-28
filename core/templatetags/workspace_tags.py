@@ -7,7 +7,7 @@ register = template.Library()
 # Nazwa sprawdzenia w szablonie → reguła dostępu ({% allowed "audiobooks" user as show_audiobooks %}).
 ALLOWED = {
     "post_layout": "can_view_post_layout", "audiobooks": "can_view_audiobooks",
-    "social_media": "can_view_social_media", "audio_proofreading": "can_view_audio_proofreading",
+    "social_media": "can_manage_social_media", "audio_proofreading": "can_view_audio_proofreading",
     "illustrations": "can_view_illustrations", "coordinator": "is_coordinator", "email_copy": "can_copy_emails",
     "my_reviews": "can_view_my_reviews", "review_list": "can_browse_reviews",
     "recruitment_mailbox": "can_use_recruitment_mailbox", "table_csv": "is_superuser",

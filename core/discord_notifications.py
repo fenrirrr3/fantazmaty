@@ -1,5 +1,5 @@
 """Powiadomienia Discord z reguł w panelu admina: tekst do wzięcia, nowe zgłoszenie do recenzji, rozpoczęcie
-i zakończenie etapu, produkcja audiobooka.
+i zakończenie etapu, produkcja audiobooka, nowy wpis w kalendarzu Social Media.
 
 Wiadomości trafiają do kolejki (DiscordNotification) w tej samej transakcji co zmiana w CMS-ie,
 a wysyłka następuje dopiero po zatwierdzeniu transakcji. Błąd wysyłki nigdy nie cofa zmiany.
@@ -28,6 +28,7 @@ NOT_A_COMPLETION = {'ready_for_editing', 'ready', 'withdrawn', 'author_editing'}
 STAGE_EVENTS = 'stage_completed'
 EVENT_STARTED, EVENT_COMPLETED = 'Rozpoczęto', 'Zakończono'
 AUDIOBOOK = 'audiobook_production'
+SOCIAL_CALENDAR = 'social_calendar'
 
 # Zgłoszenia do recenzji są anonimowe dla recenzentów (dane autora widzi tylko superuser).
 ANONYMOUS_AUTHOR = '(anonimowo)'
@@ -284,6 +285,31 @@ def audiobook_changed(text, *, actor, status, change, using='default'):
     Odnośnik prowadzi do strony audiobooka."""
     safe_queue(AUDIOBOOK, using=using, text=text, link=preview_link(audiobook_id=text.pk),
                context={**text_context(text), 'osoba': actor, 'status': status, 'zmiana': change})
+
+
+def calendar_day_label(day):
+    """Dzień wpisu w kalendarzu do tagu [data], np. „czwartek, 5.11.2026”."""
+    from django.utils.dates import WEEKDAYS
+    from django.utils.translation import override
+    with override('pl'):
+        return f'{str(WEEKDAYS[day.weekday()]).lower()}, {day.day}.{day.month:02d}.{day.year}'
+
+
+def calendar_link(day):
+    """Odnośnik Markdown „O, tutaj” do dnia w kalendarzu Social Media (miesiąc wpisu, przewinięty do dnia)."""
+    path = reverse('core:social_calendar')
+    return f'[{LINK_LABEL}](<{base_url()}{path}?month={day:%Y-%m}#social-day-{day:%Y-%m-%d}>)'
+
+
+def calendar_context(*, day, description, platform, person):
+    return {'data': calendar_day_label(day), 'opis': description, 'platforma': platform, 'osoba': person}
+
+
+def social_calendar_added(entry, using='default'):
+    """Nowy wpis w kalendarzu Social Media (nie edycja) – wiadomość z odnośnikiem do dnia w kalendarzu."""
+    safe_queue(SOCIAL_CALENDAR, using=using, link=calendar_link(entry.day), context=calendar_context(
+        day=entry.day, description=entry.description, platform=entry.get_platform_display(),
+        person=entry.added_by_name or person_name(entry.added_by)))
 
 
 def stage_available(stage):

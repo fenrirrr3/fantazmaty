@@ -1,0 +1,9 @@
+{% extends "admin/change_list.html" %}
+{% block search %}<p class="help">Nazwy rang do oznaczeń w powiadomieniach. Rangę może też nadawać CMS: wybierz „role w CMS-ie” i tryb – „Tylko nadawanie” dodaje rangę brakującym członkom ekipy, „Pełna synchronizacja” (włączana po obejrzeniu podglądu) także ją odbiera. CMS zmienia wyłącznie rangi z tej listy i wyłącznie u osób z identyfikatorem Discorda w profilu.</p>{{ block.super }}{% endblock %}
+{% block object-tools-items %}
+<li><a href="{% url 'admin:core_discordrole_sync' %}">Synchronizacja rang</a></li>
+<li><a href="{% url 'admin:core_discordrole_match' %}">Dopasuj po imieniu i nazwisku</a></li>
+<li><a href="{% url 'admin:core_discordrolechange_changelist' %}">Historia rang</a></li>
+<li><a href="{% url 'admin:core_discordsettings_changelist' %}">Link zapraszający</a></li>
+{{ block.super }}
+{% endblock %}

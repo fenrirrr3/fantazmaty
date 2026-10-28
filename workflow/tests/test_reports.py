@@ -12,6 +12,7 @@ from django.utils import timezone
 from core.assignment_integrity import assignment_conflicts, assignment_conflict_details
 from core.edit_versions import version_of
 from core.selectors.reports import workflow_inactivity_context
+from fantazmaty.testing import create_member, create_superuser
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
 from people.models import Person
 from texts.models import Anthology, Review, ReviewAssignment, Text
@@ -619,11 +620,11 @@ class ReportPageTests(TestCase):
         self.assertEqual({str(person) for person in page.context['people']}, {'redaktor Testowy', 'inny Testowy'})
         self.assertEqual({person.pk: person.on_leave for person in page.context['people']},
                          {self.other_editor.person_profile.pk: True, self.editor.person_profile.pk: False})
-        self.assertEqual(page.context['role'], str(redaktor.pk))
+        self.assertEqual(page.context['selected_roles'], [str(redaktor.pk)])
         self.assertContains(page, 'inny Testowy</a> <span class="badge is-warning">Na urlopie</span>', html=False)
         self.assertContains(page, 'Na urlopie', count=1)
         everyone = self.get('core:last_activity', self.coordinator, role='nie-rola', days=0)
-        self.assertEqual(everyone.context['role'], '')
+        self.assertEqual(everyone.context['selected_roles'], [])
         self.assertIn('koordynator Testowy', {str(person) for person in everyone.context['people']})
 
     def test_reviewer_activity_archive_scope(self):
@@ -650,3 +651,53 @@ class ReportPageTests(TestCase):
             from core.selectors.reports import workflow_activity_context
             workflow_activity_context(user=self.admin, params=QueryDict(), stage_roles={'fourth_verification': 'verifier_4'},
                                       people_role_name='Redaktor', people_context_name='editors')
+
+
+class LastActivityRoleFilterTests(TestCase):
+    """Ostatnia aktywność: filtr kilku ról naraz – osoba z co najmniej jedną z wybranych ról, każda raz."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.superuser = create_superuser('last-activity-admin')
+        cls.editor = create_member('la-redaktor', 'Redaktor')
+        cls.proofreader = create_member('la-korektor', 'Korektor')
+        cls.both = create_member('la-oba', 'Redaktor')
+        cls.reviewer = create_member('la-recenzent', 'Recenzent')
+        from people.models import Role
+        cls.both.person_profile.roles.add(Role.objects.get(name='Korektor'))
+        cls.roles = {role.name: str(role.pk) for role in Role.objects.filter(name__in=['Redaktor', 'Korektor', 'Recenzent'])}
+
+    def names(self, params):
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse('core:last_activity'), {'days': 0, **params})
+        self.assertEqual(response.status_code, 200)
+        return sorted(person.first_name for person in response.context['people']), response
+
+    def test_people_with_any_of_the_selected_roles(self):
+        editor, proofreader, reviewer = (self.roles[name] for name in ('Redaktor', 'Korektor', 'Recenzent'))
+        everyone = {'la-redaktor', 'la-korektor', 'la-oba', 'la-recenzent'}
+        for params, expected in (
+            ({'role': [editor]}, ['la-oba', 'la-redaktor']),
+            ({'role': [editor, proofreader]}, ['la-korektor', 'la-oba', 'la-redaktor']),
+            ({'role': [proofreader, reviewer, 'abc', '999999']}, ['la-korektor', 'la-oba', 'la-recenzent']),
+            ({'role': ['', 'abc']}, None),
+            ({}, None),
+        ):
+            with self.subTest(params=params):
+                names, response = self.names(params)
+                if expected is None:
+                    self.assertTrue(everyone <= set(names))
+                else:
+                    self.assertEqual(names, expected)
+                    self.assertEqual(len(names), len(set(names)))
+
+    def test_selected_roles_stay_checked_and_mode_is_kept(self):
+        editor, proofreader = self.roles['Redaktor'], self.roles['Korektor']
+        names, response = self.names({'role': [editor, proofreader], 'mode': 'login'})
+        page = response.content.decode()
+        for role, checked in ((editor, True), (proofreader, True), (self.roles['Recenzent'], False)):
+            with self.subTest(role=role):
+                tag = f'<input type="checkbox" name="role" value="{role}" id="activity-role-{role}"{" checked" if checked else ""}>'
+                self.assertIn(tag, page)
+        self.assertIn('data-checkbox-dropdown', page)
+        self.assertEqual(names, ['la-korektor', 'la-oba', 'la-redaktor'])

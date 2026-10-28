@@ -13,10 +13,11 @@ class AudioDescriptionAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Ta sama lista osób co na stronie Audiodeskrypcji (także osoby bez konta).
-        from core.anthology_tasks import task_people
-        current = list(self.instance.controllers.values_list("pk", flat=True)) if self.instance.pk else []
-        self.fields["controllers"].queryset = task_people(*current)
+        # Ta sama lista osób co na stronie Audiodeskrypcji: wszystkie osoby, także spoza ekipy i nieaktywne.
+        from core.anthology_tasks import consultant_label
+        from people.models import Person
+        self.fields["controllers"].queryset = Person.objects.all()
+        self.fields["controllers"].label_from_instance = consultant_label
 
 
 class AudioDescriptionNoteInline(admin.TabularInline):

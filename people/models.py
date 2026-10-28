@@ -27,6 +27,16 @@ def normalize_datetime(value):
     return value
 
 
+DISCORD_ID_RE = r"^[0-9]{17,20}$"
+
+
+def validate_discord_id(value):
+    """Identyfikator użytkownika Discorda (snowflake): same cyfry, 17–20 znaków."""
+    import re
+    if value and not re.fullmatch(DISCORD_ID_RE, value):
+        raise ValidationError("Identyfikator Discorda to sam numer: 17–20 cyfr (bez @, nazwy i spacji).")
+
+
 class Role(models.Model):
     objects = VersionedQuerySet.as_manager()
     def clean(self):
@@ -97,6 +107,21 @@ class Person(models.Model):
         blank=True,
     )
 
+    # Pusty identyfikator to NULL – unikalność obejmuje tylko wpisane (MySQL nie ma indeksów częściowych).
+    discord_id = models.CharField(
+        "identyfikator Discorda",
+        max_length=20,
+        unique=True,
+        null=True,
+        blank=True,
+        validators=[validate_discord_id],
+        help_text=(
+            "Sam numer (17–20 cyfr): Discord → Ustawienia → Zaawansowane → włącz „Tryb dewelopera”, potem prawy "
+            "przycisk na osobie → „Kopiuj ID użytkownika”. Według niego CMS nadaje i odbiera rangi "
+            "z „Role Discorda”."
+        ),
+    )
+
     previous_data = models.TextField(
         "poprzednie dane",
         blank=True,
@@ -164,10 +189,12 @@ class VacationQuerySet(VersionedQuerySet):
 
 def remember_person_row(sender, instance, using=None, **kwargs):
     """Poprzedni stan wiersza osoby – jeden odczyt na zapis dla odbiorców z people.signals (koordynacja),
-    people.identity (konto) i people.dropbox_access (dostęp do folderów). Pierwszy odbiorca pre_save osoby
+    people.identity (konto), people.dropbox_access (dostęp do folderów) i people.discord_sync (rangi Discorda).
+    Pierwszy odbiorca pre_save osoby
     (podłączany w PeopleConfig.ready)."""
     instance._previous_row = sender.objects.using(using).filter(pk=instance.pk).values(
-        "is_coordinator", "user_id", "is_active", "is_external", "dropbox_email").first() if instance.pk else None
+        "is_coordinator", "user_id", "is_active", "is_external", "dropbox_email",
+        "discord_id").first() if instance.pk else None
 
 
 def remember_role_people(sender, instance, **kwargs):

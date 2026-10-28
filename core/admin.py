@@ -19,7 +19,7 @@ from core.models import PublicAudiobookSettings
 from core.models import Audiobook, AudiobookStage
 from core.models import AudioContributor
 from core.models import PostLayoutAssignment
-from core.models import SocialMediaEntry, SocialMediaQuote, TextSocialMedia
+from core.models import SocialCalendarEntry, SocialMediaEntry, SocialMediaQuote, TextSocialMedia
 from core.account_identity import person_name
 from core.audiobook_forms import AudiobookProductionForm
 from core import notification_admin  # noqa: F401 – rejestracja panelu powiadomień Discord
@@ -270,6 +270,17 @@ class SocialMediaQuoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
+@admin.register(SocialCalendarEntry)
+class SocialCalendarEntryAdmin(SocialMediaQuoteAdmin):
+    """Wpisy kalendarza Social Media; dodanie w panelu nie wysyła powiadomienia Discord (tylko strona kalendarza)."""
+    list_display = ('day', 'description', 'platform', 'added_by_name', 'updated_at')
+    list_filter = ('platform',)
+    search_fields = ('description', 'added_by_name')
+    list_select_related = ()
+    raw_id_fields = ()
+    date_hierarchy = 'day'
+
+
 User = get_user_model()
 
 
@@ -325,6 +336,7 @@ class AccountCreationForm(IdentityFormMixin, AdminUserCreationForm):
     send_invitation = forms.BooleanField(
         label="Wyślij zaproszenie e-mailem", required=False, initial=True,
         help_text="Osoba dostanie link do ustawienia własnego hasła. Pola hasła zostaw wtedy puste.")
+    invite_discord = forms.BooleanField(label="Zaproś też na Discorda", required=False)
 
     class Meta(UserCreationForm.Meta):
         model = User
@@ -336,6 +348,8 @@ class AccountCreationForm(IdentityFormMixin, AdminUserCreationForm):
         self.fields.pop("usable_password", None)
         for name in ("password1", "password2"):
             self.fields[name].help_text = "Tylko bez zaproszenia."
+        from core.invitations import setup_discord_field
+        setup_discord_field(self.fields["invite_discord"])
 
     def validate_passwords(self, *args, **kwargs):
         self.cleaned_data["usable_password"] = "false" if self.cleaned_data.get("send_invitation") else "true"
@@ -387,17 +401,18 @@ class AccountAdmin(UserAdmin):
     def invitation(self, obj):
         from django.urls import reverse
         from django.utils.html import format_html
-        from core.invitations import invitation_days
+        from core.invitations import discord_checkbox, invitation_days
         if not obj or not obj.pk:
             return "–"
         state = invitation_state(obj)
         if obj.last_login:
             state += f" Ostatnie logowanie: {obj.last_login:%d.%m.%Y}."
         return format_html(
-            '<button type="submit" class="button" formaction="{}" formnovalidate name="_invite">Wyślij zaproszenie</button>'
+            '<button type="submit" class="button" formaction="{}" formnovalidate name="_invite">Wyślij zaproszenie</button> {}'
             '<div class="help cms-inline-help">{} Mail z linkiem do ustawienia hasła (ważnym {} dni) trafi na adres {}. Niezapisane zmiany '
             'w formularzu nie zostaną zapisane.</div>',
-            reverse("admin:auth_user_invite", args=[obj.pk]), state, invitation_days(), obj.email or "– brak adresu –")
+            reverse("admin:auth_user_invite", args=[obj.pk]), discord_checkbox(), state, invitation_days(),
+            obj.email or "– brak adresu –")
 
     def get_urls(self):
         from django.urls import path
@@ -413,22 +428,24 @@ class AccountAdmin(UserAdmin):
         user = get_object_or_404(User, pk=object_id)
         if not self.has_change_permission(request, user):
             raise PermissionDenied
-        self._invite(request, user)
+        from core.invitations import DISCORD_FIELD
+        self._invite(request, user, discord=bool(request.POST.get(DISCORD_FIELD)))
         person = getattr(user, "person_profile", None) if request.POST.get("_from_person") else None
         if person:
             return redirect("admin:people_person_change", person.pk)
         return redirect("admin:auth_user_change", user.pk)
 
-    def _invite(self, request, user):
-        """Zaproszenie wychodzi dopiero po zatwierdzeniu transakcji – wycofany zapis konta nie wysyła maila."""
+    def _invite(self, request, user, discord=False):
+        """Zaproszenie wychodzi dopiero po zatwierdzeniu transakcji – wycofany zapis konta nie wysyła maila.
+        discord – z linkiem zapraszającym na serwer Discorda (core.invitations)."""
         from django.db import transaction
 
         def send():
             from django.contrib import messages
             from django.core.exceptions import ValidationError
-            from core.invitations import send_invitation
+            from core.invitations import discord_invite_url, send_invitation
             try:
-                send_invitation(user, request)
+                send_invitation(user, request, discord=discord)
             except ValidationError as error:
                 self.message_user(request, "Nie wysłano zaproszenia: " + " ".join(error.messages), messages.ERROR)
             except OSError:
@@ -436,14 +453,15 @@ class AccountAdmin(UserAdmin):
                                   messages.ERROR)
             else:
                 self.log_change(request, user, INVITATION_LOG)
-                self.message_user(request, f"Wysłano zaproszenie na adres {user.email}.", messages.SUCCESS)
+                note = " (z zaproszeniem na Discorda)" if discord and discord_invite_url() else ""
+                self.message_user(request, f"Wysłano zaproszenie na adres {user.email}{note}.", messages.SUCCESS)
 
         transaction.on_commit(send)
 
     def response_add(self, request, obj, post_url_continue=None):
         form = getattr(request, "_account_add_form", None)
         if form is not None and form.cleaned_data.get("send_invitation"):
-            self._invite(request, obj)
+            self._invite(request, obj, discord=form.cleaned_data.get("invite_discord"))
         return super().response_add(request, obj, post_url_continue)
 
     def save_form(self, request, form, change):
@@ -476,7 +494,7 @@ class AccountAdmin(UserAdmin):
     form = AccountChangeForm
     add_form = AccountCreationForm
     add_fieldsets = ((None, {"classes": ("wide",), "fields": (
-        "first_name", "last_name", "email", "send_invitation", "password1", "password2",
+        "first_name", "last_name", "email", "send_invitation", "invite_discord", "password1", "password2",
     )}),)
 
 

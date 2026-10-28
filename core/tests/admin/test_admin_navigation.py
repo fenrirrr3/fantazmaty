@@ -68,7 +68,8 @@ class AdminNavigationTests(TestCase):
         # Ekstrakty zamykają grupę Teksty, tak jak w menu strony.
         self.assertEqual(names(by_label['texts'])[-2:], ['extract', 'extractvolume'])
         self.assertIn('author', names(by_label['people']))
-        self.assertEqual(names(by_label['promotion']), ['textsocialmedia', 'socialmediaentry', 'socialmediaquote'])
+        self.assertEqual(names(by_label['promotion']), ['textsocialmedia', 'socialmediaentry', 'socialmediaquote',
+                                                        'socialcalendarentry'])
         self.assertIn('workflowstage', names(by_label['history']))
         self.assertIn('workflowroleassignment', names(by_label['history']))
         detail = by_label['history']['subgroups'][0]
@@ -188,3 +189,14 @@ class AdminNavigationTests(TestCase):
         self.assertEqual(patterns[0].resolve('autorzy/autor/5/').kwargs, {'pk': 5})
         self.assertEqual(self.client.get('/panel/authors/').status_code, 404)
 
+
+
+class AdminDateHierarchyTests(TestCase):
+    def test_date_hierarchy_uses_date_fields_only(self):
+        """date_hierarchy tylko na polach daty (DateField): hierarchia po dacie i godzinie wymaga w MySQL tabel stref
+        czasowych, których serwer nie musi mieć (błąd 500 na liście w panelu)."""
+        from django.db.models import DateTimeField
+        offenders = [f'{model.__name__}.{model_admin.date_hierarchy}' for model, model_admin in admin.site._registry.items()
+                     if model_admin.date_hierarchy
+                     and isinstance(model._meta.get_field(model_admin.date_hierarchy), DateTimeField)]
+        self.assertEqual(offenders, [])

@@ -1,7 +1,7 @@
 """Formularze zakładki Social Media (zapis jednego wiersza tabeli)."""
 from django import forms
 
-from core.social_models import SocialMediaEntry, SocialMediaQuote, TextSocialMedia
+from core.social_models import SocialCalendarEntry, SocialMediaEntry, SocialMediaQuote, TextSocialMedia
 
 
 class SocialMediaFieldsForm(forms.ModelForm):
@@ -55,3 +55,27 @@ class SocialMediaQuoteStatusForm(forms.ModelForm):
     class Meta:
         model = SocialMediaQuote
         fields = ('status', 'posted_on')
+
+
+class SocialCalendarEntryForm(forms.ModelForm):
+    """Wpis w kalendarzu Social Media: dzień, co idzie i gdzie (autora ustawia widok)."""
+    day = forms.DateField(label='Dzień', widget=forms.DateInput(attrs={'type': 'date'}),
+                          input_formats=['%Y-%m-%d', '%d.%m.%Y'],
+                          error_messages={'invalid': 'Podaj prawidłową datę.', 'required': 'Podaj dzień.'})
+
+    class Meta:
+        model = SocialCalendarEntry
+        fields = ('day', 'description', 'platform')
+        error_messages = {'description': {'required': 'Wpisz, co idzie tego dnia.',
+                                          'max_length': 'Opis może mieć najwyżej %(limit_value)d znaków.'},
+                          'platform': {'required': 'Wybierz, gdzie idzie wpis.',
+                                       'invalid_choice': 'Wybierz, gdzie idzie wpis.'}}
+
+    def clean_description(self):
+        return ' '.join(self.cleaned_data['description'].split())
+
+    def clean_day(self):
+        day = self.cleaned_data['day']
+        if not 2000 <= day.year <= 2100:
+            raise forms.ValidationError('Podaj dzień z lat 2000–2100.')
+        return day

@@ -23,6 +23,9 @@ class PersonAdminForm(forms.ModelForm):
     create_account = forms.BooleanField(
         label="Utwórz konto logowania i wyślij zaproszenie", required=False,
         help_text="Loginem będzie adres e-mail osoby. Osoba ustawi hasło z linku w mailu.")
+    invite_discord = forms.BooleanField(
+        label="Zaproś też na Discorda", required=False,
+        help_text="Link zapraszający na serwer trafi do maila z zaproszeniem do CMS-u.")
 
     class Meta:
         model = Person
@@ -31,6 +34,7 @@ class PersonAdminForm(forms.ModelForm):
             "last_name",
             "email",
             "dropbox_email",
+            "discord_id",
             "previous_data",
             "is_active",
             "is_external",
@@ -43,6 +47,9 @@ class PersonAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._add_dropbox_fields()
+        if "invite_discord" in self.fields:
+            from core.invitations import setup_discord_field
+            setup_discord_field(self.fields["invite_discord"])
 
     def _add_dropbox_fields(self):
         """Pole wyboru poziomu dla każdego folderu z listy (people.dropbox_access.folders_for)."""
@@ -155,6 +162,10 @@ class PersonAdminForm(forms.ModelForm):
     def clean_dropbox_email(self):
         return self.cleaned_data["dropbox_email"].strip()
 
+    def clean_discord_id(self):
+        # Pusty identyfikator to NULL (unikalność dotyczy tylko wpisanych).
+        return (self.cleaned_data.get("discord_id") or "").strip() or None
+
 
 def dropbox_state(access, folder):
     """Opis stanu dostępu pod polem folderu na ekranie osoby."""
@@ -208,6 +219,7 @@ class PersonAdmin(admin.ModelAdmin):
         from people.dropbox_access import admin_messages, report_to
         with transaction.atomic():
             report_to(request, admin_messages(self, request))
+            report_discord(self, request)
             people = list(queryset.select_for_update().filter(is_active=True).order_by('pk'))
             for person in people:
                 person.is_active = False
@@ -253,6 +265,7 @@ class PersonAdmin(admin.ModelAdmin):
         "last_name__plcontains",
         "email__plcontains",
         "dropbox_email__plcontains",
+        "discord_id",
     )
 
     ordering = (
@@ -273,10 +286,10 @@ class PersonAdmin(admin.ModelAdmin):
     show_full_result_count = False
 
     fieldsets = (
-        ('Dane osoby i kontakt', {'fields': ('first_name', 'last_name', 'email', 'dropbox_email')}),
+        ('Dane osoby i kontakt', {'fields': ('first_name', 'last_name', 'email', 'dropbox_email', 'discord_id')}),
         ('Role i aktywność', {'fields': ('is_active', 'is_external', 'roles', 'is_coordinator'),
             'description': 'Zewnętrzny pozostaje na liście zespołu, ale nie loguje się i nie jest liczony w aktywności. Koordynację nadaj przez rolę działową.'}),
-        ('Powiązane konto i profil autora', {'fields': ('user', 'create_account', 'account_link', 'account_status', 'author_profile'),
+        ('Powiązane konto i profil autora', {'fields': ('user', 'create_account', 'invite_discord', 'account_link', 'account_status', 'author_profile'),
             'description': 'E-mail osoby jest loginem konta, a odznaczenie „wciąż w ekipie” blokuje logowanie.'}),
         ('Urlop', {'classes': ('person-account-half',),
                   'fields': ('leave_start_date', 'leave_end_date', 'leave_until_revoked')}),
@@ -289,7 +302,7 @@ class PersonAdmin(admin.ModelAdmin):
     def get_fieldsets(self, request, obj=None):
         """Z kontem: login z odnośnikiem i stan konta. Bez konta: powiązanie istniejącego konta albo utworzenie nowego.
         Za kontem – poziom dostępu do folderów Dropbox (po jednym polu na folder)."""
-        hidden = {'user', 'create_account'} if obj and obj.user_id else {'account_link'}
+        hidden = {'user', 'create_account', 'invite_discord'} if obj and obj.user_id else {'account_link'}
         fieldsets = [(name, {**options, 'fields': tuple(f for f in options['fields'] if f not in hidden)})
                      for name, options in self.fieldsets]
         index = next(i for i, (name, _) in enumerate(fieldsets) if name.startswith('Powiązane konto')) + 1
@@ -335,8 +348,9 @@ class PersonAdmin(admin.ModelAdmin):
         from people.accounts import normalize_email
         from people.dropbox_access import admin_messages, report_to
         User = get_user_model()
-        # Wyniki synchronizacji Dropboxa (po zatwierdzeniu zapisu) trafią do komunikatów tej strony.
+        # Wyniki synchronizacji Dropboxa i rang Discorda (po zatwierdzeniu zapisu) trafią do komunikatów tej strony.
         report_to(request, admin_messages(self, request))
+        report_discord(self, request)
         created = None
         if form.cleaned_data.get('create_account') and not obj.user_id:
             email = normalize_email(obj.email)
@@ -351,7 +365,7 @@ class PersonAdmin(admin.ModelAdmin):
             obj.user = created
         super().save_model(request, obj, form, change)
         if created:
-            self.admin_site._registry[User]._invite(request, created)
+            self.admin_site._registry[User]._invite(request, created, discord=form.cleaned_data.get('invite_discord'))
 
     def save_related(self, request, form, formsets, change):
         from people.dropbox_access import set_person_access
@@ -361,6 +375,7 @@ class PersonAdmin(admin.ModelAdmin):
     def delete_model(self, request, obj):
         from people.dropbox_access import admin_messages, report_to
         report_to(request, admin_messages(self, request))
+        report_discord(self, request)
         super().delete_model(request, obj)
 
     def delete_queryset(self, request, queryset):
@@ -369,6 +384,7 @@ class PersonAdmin(admin.ModelAdmin):
         from people.dropbox_access import admin_messages, report_to
         with transaction.atomic():
             report_to(request, admin_messages(self, request))
+            report_discord(self, request)
             super().delete_queryset(request, queryset)
 
     @admin.display(description="Stan konta")
@@ -376,6 +392,7 @@ class PersonAdmin(admin.ModelAdmin):
         from django.urls import reverse
         from django.utils.html import format_html
         from core.admin import invitation_state
+        from core.invitations import discord_checkbox
         if not obj or not obj.user_id:
             return "Brak konta – osoba nie loguje się do CMS-u."
         user = obj.user
@@ -384,10 +401,10 @@ class PersonAdmin(admin.ModelAdmin):
                     else "Zaproszenie nieprzyjęte – hasło nieustawione.")
         return format_html(
             '{} {} {}<br><button type="submit" class="button cms-invite-button" formaction="{}" formnovalidate name="_from_person" '
-            'value="1">Wyślij zaproszenie</button><div class="help cms-inline-help">Zaproszenie trafi na adres {}. Niezapisane zmiany w formularzu '
+            'value="1">Wyślij zaproszenie</button> {}<div class="help cms-inline-help">Zaproszenie trafi na adres {}. Niezapisane zmiany w formularzu '
             'nie zostaną zapisane.</div>',
             login, password, invitation_state(user), reverse('admin:auth_user_invite', args=[user.pk]),
-            user.email or '– brak adresu –')
+            discord_checkbox(), user.email or '– brak adresu –')
 
     @admin.display(description="Login")
     def account_link(self, obj):
@@ -465,6 +482,12 @@ class PersonAdmin(admin.ModelAdmin):
             role.name
             for role in obj.roles.all()
         ) or "–"
+
+
+def report_discord(model_admin, request):
+    """Wyniki synchronizacji rang Discorda z bieżącej transakcji trafią do komunikatów panelu."""
+    from people import discord_sync
+    discord_sync.report_to(request, discord_sync.admin_messages(model_admin, request))
 
 
 def dropbox_description():

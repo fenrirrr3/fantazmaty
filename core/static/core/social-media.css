@@ -1,4 +1,4 @@
-/* Social Media: rozwijane sekcje „Inne” i „Cytaty” oraz tabela opowiadań do promocji. Kolory wyłącznie z tokenów motywu. */
+/* Social Media: rozwijane sekcje „Inne” i „Cytaty”, tabela opowiadań do promocji i kalendarz. Kolory wyłącznie z tokenów motywu. */
 
 .social-media-filters-body {
     border-bottom: 1px solid var(--border);
@@ -189,5 +189,257 @@
 
     .social-quote-row {
         margin-inline-start: var(--space-4);
+    }
+}
+
+/* ===== Kalendarz: siatka miesiąca od poniedziałku; na wąskim ekranie lista dni. ===== */
+.social-media-tabs {
+    margin-bottom: var(--space-4);
+}
+
+.social-calendar-header {
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.social-calendar-nav {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.social-calendar-month-form {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.social-calendar-month-form > input {
+    min-height: var(--control-height-sm);
+    max-width: 11rem;
+}
+
+.social-calendar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-3) var(--card-padding) 0;
+    list-style: none;
+}
+
+.social-calendar {
+    padding: var(--space-3) var(--card-padding) var(--card-padding);
+}
+
+.social-calendar-weekdays,
+.social-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.social-calendar-weekdays {
+    margin-bottom: var(--space-1);
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-align: center;
+}
+
+.social-calendar-day {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+    min-height: 7rem;
+    padding: var(--space-1) var(--space-2) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    scroll-margin-top: calc(var(--header-height) + var(--space-3));
+}
+
+.social-calendar-day.is-outside {
+    background: var(--surface-alt);
+    color: var(--muted);
+}
+
+.social-calendar-day.is-past:not(.is-today) .social-calendar-day-number {
+    color: var(--muted);
+}
+
+/* Dziś: wyraźna ramka i podpis; wybrany dzień (dodawanie, kotwica z Discorda) – tło. */
+.social-calendar-day.is-today {
+    border-color: var(--primary);
+    box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.social-calendar-day:is(.is-selected, :target) {
+    background: var(--primary-light);
+}
+
+.social-calendar-day-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: var(--control-height-sm);
+}
+
+.social-calendar-date {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.social-calendar-day-number {
+    font-weight: 600;
+}
+
+/* Dzień tygodnia i miesiąc w komórce siatki tylko dla czytników ekranu – nagłówek kolumny podaje dzień tygodnia. */
+.social-calendar-weekday,
+.social-calendar-month-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.social-calendar-today {
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--primary);
+    color: var(--on-primary);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+}
+
+.social-calendar-add-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--control-height-sm);
+    min-height: var(--control-height-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--primary-dark);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.social-calendar-add-link:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+}
+
+.social-calendar-items {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.social-calendar-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--space-1);
+    min-width: 0;
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--surface-alt);
+    font-size: var(--font-size-sm);
+    overflow-wrap: anywhere;
+}
+
+.social-calendar-title {
+    font-weight: 600;
+}
+
+.social-calendar-meta {
+    flex-basis: 100%;
+    color: var(--muted);
+    font-size: var(--font-size-xs);
+}
+
+.social-calendar-meta > .social-status-label {
+    padding: 0 var(--space-1);
+    font-size: var(--font-size-xs);
+}
+
+.social-calendar-edit-link {
+    font-size: var(--font-size-xs);
+}
+
+/* Rodzaj pozycji: plan z kalendarza i pozycje z listy (opowiadanie, „Inne”, cytat) – kolory palet motywu. */
+.social-calendar-kind {
+    display: inline-block;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--badge-neutral-bg);
+    color: var(--badge-neutral-fg);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+}
+
+.social-calendar-kind[data-kind="calendar"] {
+    background: var(--social-media-bg);
+    color: var(--social-media-fg);
+}
+
+.social-calendar-kind[data-kind="text"] {
+    background: var(--ready-bg);
+    color: var(--ready-fg);
+}
+
+.social-calendar-kind[data-kind="quote"] {
+    background: var(--reviewer-bg);
+    color: var(--reviewer-fg);
+}
+
+.social-calendar-busy ul {
+    margin: var(--space-2) 0;
+    padding-inline-start: var(--space-5);
+}
+
+.social-calendar-form-card {
+    margin-top: var(--space-5);
+}
+
+@media screen and (max-width: 760px) {
+    /* Telefon: zamiast siedmiu kolumn lista dni miesiąca z pełną datą; dni sąsiednich miesięcy są ukryte. */
+    .social-calendar-weekdays {
+        display: none;
+    }
+
+    .social-calendar-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .social-calendar-day {
+        min-height: 0;
+    }
+
+    .social-calendar-day.is-outside {
+        display: none;
+    }
+
+    .social-calendar-weekday,
+    .social-calendar-month-name {
+        position: static;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip-path: none;
+    }
+
+    .social-calendar-nav {
+        width: 100%;
     }
 }

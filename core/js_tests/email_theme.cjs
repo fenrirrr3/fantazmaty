@@ -30,7 +30,10 @@ function themeFixture(saved, blocked = false) {
     callbacks.forEach(fn => fn()); return {dark, autumn, root, written};
 }
 let f = themeFixture('autumn'); assert.equal(f.root.dataset.theme, 'autumn'); assert.equal(f.autumn.attrs['aria-pressed'], 'true');
+// Przycisk ciemnego motywu mówi, na co przełącza – „Ciemny motyw” albo „Jasny motyw” (bez „Włącz”).
+assert.equal(f.dark.textContent, 'Ciemny motyw'); assert.equal(f.dark.attrs['aria-pressed'], undefined);
 f.dark.events.click(); assert.equal(f.root.dataset.theme, 'dark'); assert.equal(f.autumn.attrs['aria-pressed'], 'false');
+assert.equal(f.dark.textContent, 'Jasny motyw');
 f.autumn.events.click(); assert.equal(f.root.dataset.theme, 'autumn');
 f.autumn.events.click(); assert.equal(f.root.dataset.theme, 'light'); assert.deepEqual(f.written, ['dark', 'autumn', 'light']);
 f = themeFixture('invalid'); assert.equal(f.root.dataset.theme, 'light');

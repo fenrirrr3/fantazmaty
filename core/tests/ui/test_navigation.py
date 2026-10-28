@@ -1,4 +1,4 @@
-"""Nawigacja: bezpieczne adresy powrotu do list, aktywna pozycja menu na stronach szczegółów,
+"""Nawigacja: bezpieczne adresy powrotu do list, aktywna pozycja menu na stronach szczegółów, sekcja „Promocja”,
 lista recenzji bez tekstu, nawigacja Ekstraktów i zwinięte panele historii tekstu."""
 from urllib.parse import urlencode
 
@@ -62,25 +62,29 @@ class DetailNavigationTests(NavigationDataMixin, TestCase):
     def setUp(self):
         self.client.force_login(self.admin)
 
-    def test_social_media_tab_is_listed_for_whole_team(self):
-        """Zakładka Social Media jest w menu (sekcja Promocja) i otwiera się całemu zespołowi – superuserowi,
-        koordynatorom, roli „Social Media” i członkom bez tej roli; konto spoza zespołu nie widzi linku i dostaje 403."""
+    def test_promotion_section_only_for_social_media(self):
+        """Sekcja menu „Promocja” (Social Media i kalendarz) jest tylko u superusera, koordynatora i roli
+        „Social Media”; redaktor, członek bez ról, członek z samą rolą honorową i konto spoza zespołu jej nie widzą."""
         url = reverse('core:social_media')
-        social = create_member('nav-social', roles.SOCIAL_MEDIA)
-        outsider = get_user_model().objects.create_user('nav-outsider')
-        for user, allowed in ((self.admin, True), (self.manager, True), (social, True), (self.member, True),
-                              (outsider, False)):
-            with self.subTest(user=user.username):
+        no_roles = create_member('nav-none', roles.EDITOR)
+        no_roles.person_profile.roles.clear()
+        no_roles.groups.clear()
+        cases = (
+            ('superuser', self.admin, True), ('koordynator', self.manager, True),
+            ('social media', create_member('nav-social', roles.SOCIAL_MEDIA), True),
+            ('redaktor', self.member, False), ('bez ról', no_roles, False),
+            ('rola honorowa', create_member('nav-emperor', roles.EMPEROR), False),
+            ('spoza zespołu', get_user_model().objects.create_user('nav-outsider'), False),
+        )
+        for label, user, allowed in cases:
+            with self.subTest(user=label):
                 self.client.force_login(user)
-                links = html.fromstring(self.client.get(reverse('core:home')).content).xpath(
-                    f'//nav//details[@data-menu-section="promotion"]//a[@href="{url}"]/text()')
-                self.assertEqual(links, ['Social Media'] if allowed else [])
-                page = self.client.get(url)
-                self.assertEqual(page.status_code, 200 if allowed else 403)
+                doc = html.fromstring(self.client.get(reverse('core:home')).content)
+                section = doc.xpath('//nav//details[@data-menu-section="promotion"]')
+                self.assertEqual(bool(section), allowed)
+                self.assertEqual(bool(doc.xpath(f'//nav//a[@href="{url}"]')), allowed)
                 if allowed:
-                    doc = html.fromstring(page.content)
-                    self.assertEqual(doc.xpath('//h1/text()'), ['Social Media'])
-                    self.assertEqual(doc.xpath(f'//nav//a[@href="{url}"]/@aria-current'), ['page'])
+                    self.assertEqual(section[0].xpath('./summary/text()'), ['Promocja'])
 
     def test_single_add_to_review_link_active_for_merged_page_and_manual_forms(self):
         """Jeden link „Dodaj do recenzji” (scalona strona) – aktywny także po wysłaniu formularzy ręcznych."""

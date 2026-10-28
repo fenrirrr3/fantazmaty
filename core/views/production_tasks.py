@@ -16,7 +16,7 @@ from texts.models import Anthology, AnthologyTask
 @coordinator_required
 def task_list(request):
     books = non_abandoned(Anthology.objects).exclude(status=Anthology.Status.READY).select_related(
-        'cover_illustrator').prefetch_related('production_tasks__assigned_to')
+        'cover_illustrator').prefetch_related('production_tasks__assigned_to', 'audio_description__controllers')
     query = request.GET.get('q', '').strip()[:200]
     choices = [('cover', 'Okładka'), *AnthologyTask.TaskType.choices]
     rows = []
@@ -36,10 +36,14 @@ def task_list(request):
         for (kind, label), cell in zip(choices, cells):
             if kind == 'audio_description' and not book.is_novel:
                 cell['url'] = reverse('core:audio_description_detail', args=[book.pk])
+                description = getattr(book, 'audio_description', None)
+                # Konsultacja audiodeskrypcji – także osoby spoza ekipy (oznaczone w szablonie).
+                cell['consultants'] = list(description.controllers.all()) if description else []
             else:
                 route = 'core:novel_detail' if book.is_novel else 'core:anthology_detail'
                 cell['url'] = reverse(route, args=[book.pk]) + ('?tasks=1' if book.is_novel else '') + '#task-' + kind
-        searchable = ' '.join([book.title, *(str(c['status']) + ' ' + c['person'] for c in cells)]).casefold()
+        searchable = ' '.join([book.title, *(str(c['status']) + ' ' + c['person'] for c in cells),
+                               *(str(p) for c in cells for p in c.get('consultants', ()))]).casefold()
         if all(term in searchable for term in query.casefold().split()):
             rows.append({'anthology': book, 'anthology_title': book.title, 'cells': cells})
     columns = {'Antologia': ('anthology', lambda row: row['anthology_title'])}

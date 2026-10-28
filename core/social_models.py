@@ -90,3 +90,36 @@ class SocialMediaQuote(models.Model):
     def __str__(self):
         content = ' '.join(self.content.split())
         return f'{self.text} – {content[:60]}{"…" if len(content) > 60 else ""}'
+
+
+class SocialCalendarEntry(models.Model):
+    """Wpis w kalendarzu Social Media: kto i co planuje wrzucić danego dnia.
+
+    Wpis jest informacyjny – nie blokuje dnia (kilka wpisów na dzień jest dozwolonych) i nie publikuje niczego
+    na Facebooku. Podpis autora zostaje, gdy konto zostanie usunięte.
+    """
+    class Platform(models.TextChoices):
+        FACEBOOK = 'facebook', 'Facebook'
+        INSTAGRAM = 'instagram', 'Instagram'
+        BOTH = 'facebook_instagram', 'Facebook i Instagram'
+        OTHER = 'other', 'Inne'
+
+    objects = VersionedQuerySet.as_manager()
+    day = models.DateField('dzień', db_index=True)
+    description = models.CharField('co idzie', max_length=300)
+    platform = models.CharField('gdzie', max_length=20, choices=Platform.choices, default=Platform.FACEBOOK)
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='+', verbose_name='dodał(a)', editable=False)
+    added_by_name = models.CharField('dodał(a) – podpis', max_length=200, blank=True, editable=False)
+    created_at = models.DateTimeField('utworzono', auto_now_add=True)
+    updated_at = models.DateTimeField('zmieniono', auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='+', verbose_name='zmienił(a)', editable=False)
+
+    class Meta:
+        verbose_name = 'social media – wpis w kalendarzu'
+        verbose_name_plural = 'Social Media – kalendarz'
+        ordering = ('day', 'created_at', 'pk')
+
+    def __str__(self):
+        return f'{self.day:%d.%m.%Y} – {self.description}'

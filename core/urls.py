@@ -36,6 +36,7 @@ from core.views.recruitment_notified import recruitment_notified
 from core.views.recruitment_mailbox import recruitment_mailbox
 from core.views.post_layout import post_layout, post_layout_edit
 from core.views.social_media import social_media
+from core.views.social_calendar import social_calendar
 from core.views.site_www import (site_catalog, site_catalog_api, site_catalog_update, site_catalog_update_all,
                                  site_listen, site_listen_api, site_team_api, site_www)
 
@@ -62,6 +63,7 @@ urlpatterns = [
     path('audiobooki/zewnetrzne/wytyczne.txt', RedirectView.as_view(pattern_name='core:audiobook_guidelines_pdf',
          permanent=True), name='audiobook_guidelines_txt'),
     path('social-media/', social_media, name='social_media'),
+    path('social-media/kalendarz/', social_calendar, name='social_calendar'),
     path('korekta-poskladowa/', post_layout, name='post_layout'),
     path('korekta-poskladowa/<int:pk>/edycja/', post_layout_edit, name='post_layout_edit'),
     path('korekta-audiobookow/', audio_proofreading, name='audio_proofreading'),

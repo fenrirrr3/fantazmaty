@@ -1,0 +1,36 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Strona główna</a> › <a href="{% url 'admin:core_discordrole_changelist' %}">Role Discorda</a> › Dopasuj po imieniu i nazwisku</div>{% endblock %}
+{% block content %}
+{% if not configured %}<p class="errornote">{{ not_configured }}</p>{% endif %}
+{% if error %}<p class="errornote">{{ error }}</p>{% endif %}
+{% if matching %}
+<p>Propozycje – nic nie zostało jeszcze zapisane. Imię i nazwisko osoby z ekipy porównywane jest najpierw z pseudonimem na serwerze, potem z nazwą globalną i nazwą użytkownika (bez względu na wielkość liter i nadmiarowe spacje; polskie znaki są rozróżniane). Zapis identyfikatora uruchamia synchronizację rang tej osoby (rangi w trybie „Tylko nadawanie” lub pełnej synchronizacji). Już połączonych z tym samym kontem: {{ matching.linked }}.</p>
+<form method="post">{% csrf_token %}
+<div class="module"><h3 class="cms-module-heading">Pewne ({{ matching.certain|length }})</h3>
+<p class="help cms-module-help">Dokładnie jedno dopasowanie w obie strony. Osoby z innym zapisanym identyfikatorem są niezaznaczone – zmiana wymaga też „zastąp”.</p>
+{% if matching.certain %}<table class="cms-full-table"><thead><tr><th scope="col">Zapisz</th><th scope="col">Osoba</th><th scope="col">Konto na serwerze</th><th scope="col">Dopasowano po</th><th scope="col">Uwagi</th></tr></thead><tbody>
+{% for proposal in matching.certain %}{% with candidate=proposal.candidate %}<tr>
+<td><input type="checkbox" name="link_{{ proposal.person.pk }}" value="{{ candidate.user_id }}"{% if proposal.status == "certain" %} checked{% endif %} aria-label="Połącz {{ proposal.person }} z {{ candidate.name }}"></td>
+<td><a href="{% url 'admin:people_person_change' proposal.person.pk %}">{{ proposal.person }}</a></td>
+<td>{{ candidate.name }} <code>{{ candidate.user_id }}</code></td><td>{{ candidate.level_label }} („{{ candidate.matched }}”)</td>
+<td>{% if proposal.status == "replace" %}<label class="cms-error-text"><input type="checkbox" name="replace" value="{{ proposal.person.pk }}"> zastąp obecny identyfikator {{ proposal.person.discord_id }}</label>{% else %}–{% endif %}</td>
+</tr>{% endwith %}{% endfor %}</tbody></table>{% else %}<p>Brak.</p>{% endif %}</div>
+<div class="module"><h3 class="cms-module-heading">Niejednoznaczne ({{ matching.ambiguous|length }})</h3>
+<p class="help cms-module-help">Kilka kont o tej nazwie albo kilka osób o tym imieniu i nazwisku – wybierz konto albo zostaw „nie łącz”.</p>
+{% if matching.ambiguous %}<table class="cms-full-table"><thead><tr><th scope="col">Osoba</th><th scope="col">Konto na serwerze</th></tr></thead><tbody>
+{% for proposal in matching.ambiguous %}<tr><td><a href="{% url 'admin:people_person_change' proposal.person.pk %}">{{ proposal.person }}</a>{% if proposal.person.discord_id %} <span class="help">(ma identyfikator {{ proposal.person.discord_id }})</span>{% endif %}</td><td>
+<label><input type="radio" name="link_{{ proposal.person.pk }}" value="" checked> nie łącz</label><br>
+{% for candidate in proposal.candidates %}<label><input type="radio" name="link_{{ proposal.person.pk }}" value="{{ candidate.user_id }}"{% if candidate.linked_to %} disabled{% endif %}> {{ candidate.name }} <code>{{ candidate.user_id }}</code> – {{ candidate.level_label }}{% if candidate.linked_to %} (połączone z: {{ candidate.linked_to }}){% endif %}</label><br>{% endfor %}
+{% if proposal.person.discord_id %}<label class="cms-error-text"><input type="checkbox" name="replace" value="{{ proposal.person.pk }}"> zastąp obecny identyfikator</label>{% endif %}
+</td></tr>{% endfor %}</tbody></table>{% else %}<p>Brak.</p>{% endif %}</div>
+{% if matching.taken %}<div class="module"><h3 class="cms-module-heading">Konto połączone z inną osobą ({{ matching.taken|length }})</h3>
+<ul class="cms-compact-list">{% for proposal in matching.taken %}<li>{{ proposal.person }} → {{ proposal.candidate.name }} <code>{{ proposal.candidate.user_id }}</code> – ma już: {{ proposal.candidate.linked_to }}</li>{% endfor %}</ul></div>{% endif %}
+<div class="module"><h3 class="cms-module-heading">Bez dopasowania ({{ matching.unmatched|length }})</h3>
+<p class="help cms-module-help">Członkowie ekipy bez identyfikatora i bez konta o tej nazwie na serwerze – identyfikator wpisz ręcznie na ekranie osoby.</p>
+{% if matching.unmatched %}<ul class="cms-compact-list">{% for proposal in matching.unmatched %}<li><a href="{% url 'admin:people_person_change' proposal.person.pk %}">{{ proposal.person }}</a></li>{% endfor %}</ul>{% else %}<p>Brak.</p>{% endif %}</div>
+{% if matching.members_left %}<details><summary>Członkowie serwera bez osoby w CMS-ie ({{ matching.members_left|length }})</summary>
+<ul class="cms-compact-list">{% for candidate in matching.members_left %}<li>{{ candidate.name|default:"–" }} <code>{{ candidate.user_id }}</code></li>{% endfor %}</ul></details>{% endif %}
+<div class="submit-row"><input type="submit" class="default" value="Zapisz zaznaczone"> <a href="{% url 'admin:core_discordrole_changelist' %}">Anuluj</a></div>
+</form>
+{% endif %}
+{% endblock %}

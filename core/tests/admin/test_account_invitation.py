@@ -229,3 +229,108 @@ class PersonScreenAccountTests(TestCase):
                 raise RuntimeError('błąd zapisu')
         self.assertFalse(User.objects.filter(email='wycofany@example.com').exists())
         self.assertEqual(mail.outbox, [])
+
+
+class DiscordInvitationTests(TestCase):
+    """„Zaproś też na Discorda”: link zapraszający z ustawień w panelu trafia do maila z zaproszeniem do CMS-u."""
+    INVITE = 'https://discord.gg/fantazmaty'
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.notification_models import DiscordSettings
+        cls.admin = create_superuser('discord-zaproszenie-admin')
+        cls.member = create_member('zaproszony', 'Redaktor')
+        User.objects.filter(pk=cls.member.pk).update(email='zaproszony@example.com')
+        cls.settings_model = DiscordSettings
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+
+    def set_link(self, url):
+        self.settings_model.objects.update_or_create(pk=1, defaults={'invite_url': url})
+
+    def invite(self, **data):
+        """Przycisk zaproszenia; zwraca komunikaty panelu (dodawane po zatwierdzeniu transakcji)."""
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse('admin:auth_user_invite', args=[self.member.pk]), data)
+        return [str(message) for message in response.wsgi_request._messages]
+
+    def test_link_validation(self):
+        """Link: tylko https://discord.gg/… albo https://discord.com/invite/…; pusty – dozwolony (opcja wyłączona)."""
+        from django.core.exceptions import ValidationError
+        cases = {'discord.gg': ('https://discord.gg/abc-123', True), 'discord.com': ('https://discord.com/invite/abc', True),
+                 'www': ('https://www.discord.com/invite/abc/', True), 'pusty': ('', True),
+                 'http': ('http://discord.gg/abc', False), 'obca domena': ('https://discord.gg.evil.example/abc', False),
+                 'kanał zamiast zaproszenia': ('https://discord.com/channels/1/2', False),
+                 'bez kodu': ('https://discord.gg/', False)}
+        for case, (url, valid) in cases.items():
+            with self.subTest(case):
+                record = self.settings_model(invite_url=url)
+                if valid:
+                    record.full_clean()
+                else:
+                    with self.assertRaisesMessage(ValidationError, 'link zaproszenia Discorda'):
+                        record.full_clean()
+
+    def test_settings_page_saves_link(self):
+        """Ustawienia w panelu: jeden rekord, zapis poprawnego linku, błąd przy złym."""
+        url = reverse('admin:core_discordsettings_add')
+        response = self.client.post(url, {'invite_url': 'https://example.com/x'})
+        self.assertContains(response, 'Podaj link zaproszenia Discorda')
+        self.client.post(url, {'invite_url': self.INVITE})
+        self.assertEqual(self.settings_model.invite_url_value(), self.INVITE)
+        self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_new_account_form_option_depends_on_link(self):
+        """Formularz nowego konta: bez linku pole nieaktywne z podpowiedzią i mail bez Discorda; z linkiem –
+        domyślnie zaznaczone, a mail zawiera link (odznaczone – bez linku)."""
+        url = reverse('admin:auth_user_add')
+        page = self.client.get(url)
+        self.assertContains(page, 'Link zapraszający na Discorda nie jest ustawiony')
+        self.assertRegex(page.content.decode(), r'name="invite_discord"[^>]* disabled')
+        base = {'first_name': 'Zofia', 'last_name': 'Nowa', 'password1': '', 'password2': '', 'send_invitation': 'on'}
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(url, {**base, 'email': 'bez-linku@example.com', 'invite_discord': 'on'})
+        self.assertNotIn('Discord', mail.outbox[-1].body)
+        self.set_link(self.INVITE)
+        self.assertContains(self.client.get(url), 'id="id_invite_discord" checked')
+        for email, data, expected in (('z-linkiem@example.com', {'invite_discord': 'on'}, True),
+                                      ('odznaczone@example.com', {}, False)):
+            with self.subTest(email), self.captureOnCommitCallbacks(execute=True):
+                self.client.post(url, {**base, 'email': email, **data})
+            self.assertEqual(mail.outbox[-1].to, [email])
+            self.assertEqual(self.INVITE in mail.outbox[-1].body, expected)
+
+    def test_invite_button_with_and_without_discord(self):
+        """Przycisk zaproszenia: pole „Zaproś też na Discorda” przy przycisku (zaznaczone) – link w mailu
+        i w komunikacie; bez zaznaczenia albo bez linku w ustawieniach – mail bez Discorda."""
+        self.assertNotIn('name="_invite_discord"',
+                         self.client.get(reverse('admin:auth_user_change', args=[self.member.pk])).content.decode())
+        self.invite(_invite_discord='1')
+        self.assertNotIn('discord', mail.outbox[-1].body.lower())
+        self.set_link(self.INVITE)
+        for page in (reverse('admin:auth_user_change', args=[self.member.pk]),
+                     reverse('admin:people_person_change', args=[self.member.person_profile.pk])):
+            with self.subTest(page):
+                self.assertContains(self.client.get(page), 'name="_invite_discord" value="1" checked')
+        self.assertEqual(self.invite(_invite_discord='1'),
+                         ['Wysłano zaproszenie na adres zaproszony@example.com (z zaproszeniem na Discorda).'])
+        body = mail.outbox[-1].body
+        self.assertIn(f'Zapraszamy też na serwer Fantazmatów na Discordzie:\n{self.INVITE}\n', body)
+        self.assertIn('Po dołączeniu od razu ustaw swój pseudonim na imię + nazwisko, jeśli twoje konto nazywa się '
+                      'inaczej.\n\nZespół Fantazmatów', body)
+        self.invite()
+        self.assertNotIn(self.INVITE, mail.outbox[-1].body)
+        self.assertIn('ponowne zaproszenie.\n\nZespół Fantazmatów', mail.outbox[-1].body)
+
+    def test_person_screen_account_with_discord(self):
+        """Nowa osoba z „Utwórz konto” i „Zaproś też na Discorda” – mail z linkiem."""
+        self.set_link(self.INVITE)
+        page = self.client.get(reverse('admin:people_person_add'))
+        self.assertContains(page, 'name="invite_discord"')
+        data = {'first_name': 'Ewa', 'last_name': 'Nowa', 'email': 'ewa.nowa@example.com', 'is_active': 'on',
+                'create_account': 'on', 'invite_discord': 'on', '_save': 'Zapisz'}
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('admin:people_person_add'), data)
+        self.assertEqual(mail.outbox[-1].to, ['ewa.nowa@example.com'])
+        self.assertIn(self.INVITE, mail.outbox[-1].body)

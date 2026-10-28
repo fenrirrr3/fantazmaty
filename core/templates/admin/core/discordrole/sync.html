@@ -1,0 +1,24 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Strona główna</a> › <a href="{% url 'admin:core_discordrole_changelist' %}">Role Discorda</a> › Synchronizacja rang</div>{% endblock %}
+{% block content %}
+{% if not configured %}<p class="errornote">{{ not_configured }}</p>{% endif %}
+<p>Podgląd – nic nie zostało jeszcze zmienione na Discordzie. CMS zmienia wyłącznie rangi z mapowania poniżej i wyłącznie u członków serwera połączonych z osobą w CMS-ie (identyfikator Discorda w profilu osoby). Po zmianach ról, odejściu z ekipy, usunięciu osoby albo zmianie identyfikatora CMS synchronizuje osobę sam; zadanie <code>sync_discord_roles</code> wyrównuje rozjazdy i ponawia błędy.</p>
+<p><a href="{% url 'admin:core_discordrole_match' %}">Dopasuj po imieniu i nazwisku</a> · <a href="{% url 'admin:core_discordrolechange_changelist' %}">Historia rang</a>{% if pending_errors %} · <a href="{% url 'admin:core_discordrolechange_changelist' %}?result__exact=error" class="cms-error-text">Błędy do ponowienia: {{ pending_errors }}</a>{% endif %}</p>
+{% if error %}<p class="errornote">{{ error }}</p>
+{% elif not roles %}<p>Żadna ranga nie jest nadawana przez CMS. Otwórz rangę w <a href="{% url 'admin:core_discordrole_changelist' %}">„Role Discorda”</a>, wybierz role w CMS-ie i tryb „Tylko nadawanie” – albo obejrzyj podgląd pełnej synchronizacji przy randze poniżej.</p>
+{% else %}
+{% include "admin/core/discordrole/plan.html" %}
+<form method="post">{% csrf_token %}<input type="hidden" name="token" value="{{ token }}">
+<div class="submit-row"><input type="submit" class="default" name="sync" value="Synchronizuj teraz"> <span class="help">Wykona dokładnie pokazany plan (nadania, a w pełnej synchronizacji także odebrania) i ponowi wcześniejsze błędy.</span></div>
+</form>
+{% endif %}
+<h2>Pełna synchronizacja</h2>
+<ul class="cms-compact-list">
+{% for plan in plans %}<li>{{ plan.role }} – {% if plan.applies_revoke %}włączona{% else %}<a href="{% url 'admin:core_discordrole_approve' plan.role.pk %}">podgląd i zatwierdzenie</a>{% endif %}</li>{% endfor %}
+{% for role in off_roles %}<li>{{ role }} (wyłączona) – <a href="{% url 'admin:core_discordrole_approve' role.pk %}">podgląd i zatwierdzenie</a></li>{% endfor %}
+</ul>
+{% if recent %}<h2>Ostatnie operacje</h2>
+<table class="cms-full-table"><thead><tr><th scope="col">Czas</th><th scope="col">Osoba</th><th scope="col">Ranga</th><th scope="col">Operacja</th><th scope="col">Wynik</th><th scope="col">Powód</th></tr></thead><tbody>
+{% for change in recent %}<tr><td>{{ change.created_at|date:"d.m.Y H:i" }}</td><td>{{ change.person_label|default:change.discord_user_id }}</td><td>{{ change.role_label }}</td><td>{{ change.get_action_display }}</td><td>{% if change.result == "error" %}<span class="cms-error-text">{{ change.get_result_display }}</span>{% else %}{{ change.get_result_display }}{% endif %}</td><td>{{ change.reason }}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+{% endblock %}

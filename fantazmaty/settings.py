@@ -479,3 +479,7 @@ CMS_BASE_URL = os.environ.get("CMS_BASE_URL", "").strip() or "https://cms.fantaz
 # (core.discord_webhook.channels): błędna konfiguracja wyłącza powiadomienia, ale nie blokuje startu aplikacji.
 # „SECRET” w nazwie ustawienia: Django ukrywa adresy webhooków na stronach błędów w trybie DEBUG.
 DISCORD_WEBHOOK_SECRETS = os.environ.get("DISCORD_WEBHOOKS", "{}")
+# Bot Discorda nadający i odbierający rangi według ról w CMS-ie (people/discord_sync.py, README: „Rangi Discorda”).
+# Puste – funkcja wyłączona (panel pokazuje komunikat), rangi wyrówna komenda sync_discord_roles po konfiguracji.
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
+DISCORD_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "").strip()

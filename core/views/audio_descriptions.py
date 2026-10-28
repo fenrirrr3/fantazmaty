@@ -17,7 +17,9 @@ from core.permissions import (team_member_required, get_active_person_profile, i
 from core.table_sorting import DisplayTable
 from people.models import Person
 from texts.models import Anthology, AnthologyTask
-from core.anthology_tasks import TaskPeopleChoice, TaskPersonChoice, task_people
+from core.anthology_tasks import ConsultantChoice, TaskPersonChoice, consultant_people, task_people
+from illustrations.contact_forms import identity_key
+from people.accounts import normalize_email
 
 
 def books():
@@ -49,14 +51,45 @@ def require_action(request, book, kwargs):
         require_edit(request, book, kwargs)
 
 
+def matching_people(first_name, last_name, email=""):
+    """Osoby ze spisu o tym samym imieniu i nazwisku (albo pseudonimie powiązanego autora) lub tym samym e-mailu.
+
+    Porównanie bez względu na wielkość liter i nadmiarowe spacje.
+    """
+    key = identity_key(f"{first_name} {last_name}")
+    email = normalize_email(email)
+    people = Person.objects.select_related("author_profile").only(
+        "pk", "first_name", "last_name", "email", "author_profile__pseudonym")
+    return [
+        person for person in people
+        if key in (identity_key(str(person)),
+                   identity_key(person.author_profile.pseudonym) if person.author_profile_id else "")
+        or (email and normalize_email(person.email) == email)
+    ]
+
+
 class DescriptionForm(forms.ModelForm):
     """Coordinator assignment only; the task status is managed on the anthology page."""
     assigned_to = TaskPersonChoice(label="Kto pisze", queryset=Person.objects.none(), required=False)
-    controllers = TaskPeopleChoice(
+    controllers = ConsultantChoice(
         label="Konsultacja – osoby do kontroli",
         queryset=Person.objects.none(),
         required=False,
         widget=forms.SelectMultiple(attrs={"data-person-multiple": "true"}),
+        help_text="Wyszukiwarka pokazuje też osoby spoza ekipy i nieaktywne.",
+    )
+    new_controller_first_name = forms.CharField(
+        label="Nowa osoba do konsultacji – imię",
+        max_length=100,
+        required=False,
+        help_text="Uzupełnij tylko, gdy osoby nie ma w podpowiedziach. Dodamy ją jako osobę spoza ekipy – "
+                  "bez konta i dostępu do CMS-u.",
+    )
+    new_controller_last_name = forms.CharField(
+        label="Nowa osoba do konsultacji – nazwisko", max_length=100, required=False
+    )
+    new_controller_email = forms.EmailField(
+        label="Nowa osoba do konsultacji – e-mail (opcjonalnie)", required=False
     )
 
     class Meta:
@@ -66,18 +99,24 @@ class DescriptionForm(forms.ModelForm):
     def __init__(self, *args, description=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.description = description
+        self.new_controller = None
         current = list(description.controllers.values_list("pk", flat=True)) if description else []
-        # Jedna lista osób dla obu pól (zapisani kontrolerzy i wykonawca są w niej zawsze).
-        people = task_people(self.instance.assigned_to_id, *current)
-        self.fields["controllers"].use_people(people)
+        # Jedno zapytanie dla obu pól: konsultacja – wszystkie osoby, „Kto pisze” – lista wykonawców zadań
+        # (zapisani kontrolerzy i wykonawca są w niej zawsze).
+        people = list(consultant_people(self.instance.assigned_to_id, *current))
+        self.fields["controllers"].use_people(people, Person.objects.all())
         self.fields["controllers"].initial = current
-        self.fields["assigned_to"].use_people(people)
+        self.fields["assigned_to"].use_people(
+            [person for person in people if person.for_tasks], task_people(self.instance.assigned_to_id, *current))
         self.fields["assigned_to"].widget.attrs["data-searchable-person"] = "true"
         for field in self.fields.values():
             field.widget.attrs["class"] = "form-control"
+        for name in ("new_controller_first_name", "new_controller_last_name", "new_controller_email"):
+            self.fields[name].widget.attrs["autocomplete"] = "off"
 
     def clean(self):
         values = super().clean()
+        self.clean_new_controller(values)
         if self.instance.status == AnthologyTask.Status.READY:
             if values.get("assigned_to") != self.instance.assigned_to:
                 raise forms.ValidationError("Audiodeskrypcja jest gotowa. Wykonawcę zmienisz tylko w panelu admina.")
@@ -86,6 +125,50 @@ class DescriptionForm(forms.ModelForm):
             self.instance.status = (AnthologyTask.Status.COMMISSIONED if values.get("assigned_to")
                                     else AnthologyTask.Status.NOT_COMMISSIONED)
         return values
+
+    def clean_new_controller(self, values):
+        """Nowa osoba spoza ekipy: imię i nazwisko wymagane, bez duplikatu w spisie osób."""
+        first = " ".join(values.get("new_controller_first_name", "").split())
+        last = " ".join(values.get("new_controller_last_name", "").split())
+        email = normalize_email(values.get("new_controller_email"))
+        values.update(new_controller_first_name=first, new_controller_last_name=last, new_controller_email=email)
+        if not (first or last or email):
+            return
+        if not first:
+            self.add_error("new_controller_first_name", "Podaj imię nowej osoby.")
+        if not last:
+            self.add_error("new_controller_last_name", "Podaj nazwisko nowej osoby.")
+        if not (first and last) or "new_controller_email" in self.errors:
+            return
+        matches = matching_people(first, last, email)
+        if matches:
+            self.add_error(
+                "new_controller_first_name",
+                f"Ta osoba już jest w spisie ({', '.join(map(str, matches))}). Wybierz ją w wyszukiwarce konsultacji.",
+            )
+            return
+        self.new_controller = Person(
+            first_name=first, last_name=last, email=email or None, user=None, is_external=True, is_active=False)
+
+    def chosen_controllers(self):
+        """Wybrane osoby konsultacji, z nową osobą spoza ekipy utworzoną przy zapisie.
+
+        Gdy tę samą osobę ktoś dodał równolegle, powtórzone wysłanie używa jedynego dopasowania.
+        """
+        controllers = list(self.cleaned_data["controllers"])
+        person = self.new_controller
+        if person is not None:
+            matches = matching_people(person.first_name, person.last_name, person.email or "")
+            if len(matches) > 1:
+                raise forms.ValidationError(
+                    "Powstało kilka pasujących wpisów. Odśwież stronę i wybierz osobę z listy.")
+            if matches:
+                person = matches[0]
+            else:
+                person.full_clean()
+                person.save()
+            controllers.append(person)
+        return controllers
 
 
 class StageForm(forms.ModelForm):
@@ -264,11 +347,19 @@ def audio_description_detail(request, anthology_id):
         }
         if request.method == "POST":
             chosen = forms_by_action.get(action)
-            if chosen is not None and chosen.is_valid():
-                if action == "assignment":
+            saved = chosen is not None and chosen.is_valid()
+            if saved and action == "assignment":
+                try:
+                    # Nowa osoba powstaje przed innymi zapisami: błąd niczego nie zmienia.
+                    controllers = form.chosen_controllers()
+                except forms.ValidationError as error:
+                    form.add_error(None, error)
+                    saved = False
+                else:
                     form.save()
-                    description.controllers.set(form.cleaned_data["controllers"])
-                elif action == "note":
+                    description.controllers.set(controllers)
+            if saved:
+                if action == "note":
                     AudioDescriptionNote.objects.create(
                         description=description,
                         author=request.user,
@@ -278,7 +369,7 @@ def audio_description_detail(request, anthology_id):
                 elif action == "content":
                     changed = content_form.save(commit=False)
                     changed.save(update_fields=["content"])
-                else:
+                elif action == "stage":
                     changed = stage_form.save(commit=False)
                     changed.save(update_fields=["stage"])
                 messages.success(

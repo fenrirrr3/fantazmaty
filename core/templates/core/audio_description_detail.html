@@ -7,10 +7,10 @@
 <section class="card"><div class="card-body"><h2>Przypisanie</h2>
 <p>Status zadania antologii: <strong>{{ task.get_status_display }}</strong>{% if can_manage %} – zmieniasz go na <a href="{% url 'core:anthology_detail' anthology.pk %}#task-audio_description">stronie antologii</a>{% endif %}.</p>
 {% if can_manage %}<form method="post" class="audio-production-form audiodesc-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="assignment">{{ form.non_field_errors }}
-{% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+{% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="muted-text">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endfor %}
 <button class="primary-button" type="submit">Zapisz</button></form>{% endif %}
 <p>Kto pisze: {% if task.assigned_to_id %}<a href="{% url 'core:person_detail' task.assigned_to_id %}">{{ task.assigned_to }}</a>{% else %}Nieprzypisane{% endif %}</p>
-<p>Konsultacja: {% for person in controllers %}<a href="{% url 'core:person_detail' person.pk %}">{{ person }}</a>{% if not forloop.last %}, {% endif %}{% empty %}Nie wyznaczono{% endfor %}</p>
+<p>Konsultacja: {% for person in controllers %}<a href="{% url 'core:person_detail' person.pk %}">{{ person }}</a>{% if person.is_external %} <span class="muted-text">(spoza ekipy)</span>{% endif %}{% if not forloop.last %}, {% endif %}{% empty %}Nie wyznaczono{% endfor %}</p>
 </div></section>
 <section class="card"><div class="card-body"><h2>Prace nad audiodeskrypcją</h2>
 {% if can_edit and not is_completed %}<form method="post" class="audiodesc-form" data-warn-unsaved data-confirm="Oznaczyć audiodeskrypcję jako zakończoną? Zadanie antologii stanie się Gotowe, a cofnąć to można tylko w panelu admina." data-confirm-when="stage=completed">{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="stage">{{ stage_form.non_field_errors }}

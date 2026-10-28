@@ -247,12 +247,14 @@ def last_activity(request):
     from people.models import Vacation
     from people.role_ordering import ordered_team_roles
     roles = list(ordered_team_roles())
-    role = request.GET.get('role', '')
-    role = role if role in {str(item.pk) for item in roles} else ''
+    # Kilka ról naraz (?role=1&role=2): osoba z co najmniej jedną z wybranych ról; nieznane wartości są pomijane.
+    known = {str(item.pk) for item in roles}
+    selected_roles = sorted({value for value in request.GET.getlist('role') if value in known}, key=int)
     on_leave = Vacation.objects.filter(person_id=OuterRef('pk')).active()
     people = Person.objects.active().annotate(on_leave=Exists(on_leave))
-    if role:
-        people = people.filter(roles=role)
+    if selected_roles:
+        # Podzapytanie zamiast złączenia: osoba z kilkoma wybranymi rolami pojawia się raz.
+        people = people.filter(pk__in=Person.objects.filter(roles__in=selected_roles).values('pk'))
     if mode == 'login':
         people = people.annotate(last_activity_at=F('user__last_login'), last_action=Value('Logowanie', output_field=CharField()))
     else:
@@ -264,4 +266,4 @@ def last_activity(request):
     people = people.order_by(F('last_activity_at').asc(nulls_first=True), 'last_name', 'first_name', 'pk')
     page = paginate_items(request, people)
     return render(request, 'core/last_activity.html', {'people': page, 'page_obj': page, 'days': days, 'mode': mode,
-                                                       'roles': roles, 'role': role})
+                                                       'roles': roles, 'selected_roles': selected_roles})

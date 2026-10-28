@@ -3,9 +3,10 @@
 {% block title %}Social Media | Fantazmaty CMS{% endblock %}
 {% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/social-media.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Social Media</h1><p class="page-description">Planowanie i przygotowanie wpisów promocyjnych.{% if can_manage %} Każdy wiersz zapisuje się osobno przyciskiem „Zapisz”.{% else %} Możesz dodawać cytaty z opowiadań – wpisy przygotowują osoby od Social Media.{% endif %}</p></header>
+<header class="page-header"><h1 class="page-title">Social Media</h1><p class="page-description">Planowanie i przygotowanie wpisów promocyjnych. Każdy wiersz zapisuje się osobno przyciskiem „Zapisz”.</p></header>
+{% include "core/includes/social_media_tabs.html" with social_tab="list" %}
 
-{% if can_manage %}<details class="card collapsible-card social-media-other" id="social-other"{% if open_other %} open{% endif %}>
+<details class="card collapsible-card social-media-other" id="social-other"{% if open_other %} open{% endif %}>
     <summary><span>Inne <span class="record-counter" title="Liczba wpisów">{{ entry_rows|length }}</span></span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
         <p class="form-help">Wpisy niezwiązane z konkretnym opowiadaniem, np. zapowiedzi naborów czy premier.</p>
@@ -30,11 +31,11 @@
             </tr>{% endwith %}{% empty %}<tr><td colspan="5">Brak innych wpisów.</td></tr>{% endfor %}</tbody>
         </table>
     </div>
-</details>{% endif %}
+</details>
 
 {% include "core/includes/social_media_quotes.html" %}
 
-{% if can_manage %}<section class="card social-media-card" aria-labelledby="social-texts-heading">
+<section class="card social-media-card" aria-labelledby="social-texts-heading">
     <header class="section-header"><div><h2 id="social-texts-heading">Opowiadania</h2><p>{% if unpublished %}Teksty z antologii wydanych i niewydanych.{% else %}Teksty z antologii wydanych (status „Gotowa”).{% endif %} Bez tekstów wycofanych, powieści i antologii porzuconych.</p></div><span class="record-counter" title="Liczba opowiadań">{{ page_obj.paginator.count }}</span></header>
     <div class="card-body social-media-filters-body">
         <form method="get" class="filters-form social-media-filters" aria-label="Filtry opowiadań">
@@ -62,7 +63,7 @@
         </table>
     </div>
 </section>
-{% include "core/includes/pagination.html" %}{% endif %}
+{% include "core/includes/pagination.html" %}
 
 
 {% endblock %}
