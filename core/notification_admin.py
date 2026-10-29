@@ -388,7 +388,7 @@ class DiscordRoleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                                        '(„Synchronizacja rang”) albo zadaniu sync_discord_roles.', messages.INFO)
 
     def get_urls(self):
-        view = self.admin_site.admin_view
+        view = self.admin_site.admin_view  # panel tylko dla superużytkowników (CMSAdminSite.has_permission)
         return [path('synchronizacja/', view(self.sync_view), name='core_discordrole_sync'),
                 path('<int:role_pk>/zatwierdz/', view(self.approve_view), name='core_discordrole_approve'),
                 path('dopasuj/', view(self.match_view), name='core_discordrole_match'),
@@ -432,8 +432,6 @@ class DiscordRoleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def sync_view(self, request):
         """Przegląd: podgląd wszystkich zarządzanych rang i „Synchronizuj teraz” (wykonuje dokładnie pokazany plan)."""
         from people.discord_sync import UNRECOGNIZED_RULE, managed_roles, plans_digest, preview, synchronize
-        if not self.has_superuser_access(request):
-            return redirect('admin:index')
         if request.method == 'POST':
             outcome = synchronize(source=DiscordRoleChange.Source.PANEL, actor=request.user,
                                   expected=self._confirmed(request))
@@ -453,8 +451,6 @@ class DiscordRoleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         """Podgląd rangi z odbieraniem i „Zatwierdź i włącz pełną synchronizację” (zapis zatwierdzenia i wykonanie)."""
         from django.shortcuts import get_object_or_404
         from people.discord_sync import UNRECOGNIZED_RULE, approval_preview, approve_full_sync, plans_digest
-        if not self.has_superuser_access(request):
-            return redirect('admin:index')
         role = get_object_or_404(DiscordRole, pk=role_pk)
         if request.method == 'POST':
             outcome = approve_full_sync(role, request.user, expected=self._confirmed(request))
@@ -472,8 +468,6 @@ class DiscordRoleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         """„Dopasuj po imieniu i nazwisku”: propozycje z listy członków serwera; zapis tylko zaznaczonych."""
         from people import discord_api, discord_matching
         from people.discord_sync import admin_messages, report_to
-        if not self.has_superuser_access(request):
-            return redirect('admin:index')
         matching, error = None, ''
         if discord_api.is_configured():
             try:

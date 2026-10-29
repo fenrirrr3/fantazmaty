@@ -67,5 +67,11 @@ function click(uid) {
     await tick(); assert.equal(state.textContent,'Wybór wygasł'); assert.equal(panel.attrs['aria-busy'],'false');
     click('15'); pending[3].resolve({ok:false, redirected:false, text:async()=>null});
     await tick(); assert.match(state.textContent,/Odśwież stronę/);
-    console.log('Recruitment preview: selection, batching, late responses, safe text, All and errors OK');
+    // Strona „Dodaj do recenzji” przed pobraniem nagłówków: formularz bez panelu podglądu – bez błędu i bez nasłuchu.
+    const bare = node(); bare.querySelector = () => null; const bareCallbacks = [];
+    vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../static/core/recruitment-samples.js'),'utf8'), {
+        document: {addEventListener: (_, fn) => bareCallbacks.push(fn), querySelector: () => bare}});
+    assert.doesNotThrow(() => bareCallbacks.forEach(fn=>fn()));
+    assert.deepEqual(Object.keys(bare.events), []);
+    console.log('Recruitment preview: selection, batching, late responses, safe text, All, errors and page without panel OK');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -167,6 +167,7 @@ urlpatterns = [
         mailbox.mailbox_headers,
         name="review_bulk_import",
     ),
+    path("recenzje/import/nabory-cykliczne/", mailbox.cyclic_recruitments, name="cyclic_recruitments"),
     path(
         "recenzje/<int:review_id>/przypisz/",
         reviews.assign_reviewer,

@@ -1,10 +1,11 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Ten sam podgląd treści maila w rekrutacji i przy pobieraniu zgłoszeń do recenzji.
     const form = document.querySelector('[data-recruitment-samples], [data-mailbox-import][data-preview-field]');
-    if (!form) return;
+    // Bez listy nagłówków (strona przed „Pobierz nagłówki”) nie ma panelu podglądu.
+    const panel = form?.querySelector('[data-mail-preview]');
+    if (!panel) return;
     const field = (form.dataset && form.dataset.previewField) || 'selected';
     const boxSelector = `input[name="${field}"]`;
-    const panel = form.querySelector('[data-mail-preview]');
     const state = panel.querySelector('[data-preview-state]');
     const subject = panel.querySelector('[data-preview-subject]');
     const sender = panel.querySelector('[data-preview-sender]');

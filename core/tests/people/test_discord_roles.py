@@ -7,7 +7,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.parse
-from io import StringIO
+from io import BytesIO, StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -16,6 +16,7 @@ from django.core.management import CommandError, call_command
 from django.db import connection, transaction
 from django.test import SimpleTestCase, TestCase, override_settings, tag
 from django.urls import reverse
+from django.utils import timezone
 
 from core.notification_models import DiscordRole, DiscordRoleChange
 from core.tests.people.support import admin_form_data
@@ -198,6 +199,28 @@ class DiscordClientTests(SimpleTestCase):
             with self.subTest(case), patch('people.discord_api.urllib.request.urlopen', side_effect=error):
                 with self.assertRaisesMessage(DiscordError, 'Brak połączenia z Discordem'):
                     discord_api._send('GET', 'https://discord.com/api/v10/x', 'tok', {})
+
+    def test_http_error_body_and_unreadable_answers(self):
+        """Błąd HTTP z urlopen to zwykła odpowiedź (kod i treść); nieczytelny JSON – brak danych; lista członków
+        niebędąca listą – błąd; czas oczekiwania z treści, potem z nagłówka Retry-After, nieczytelny – 1 s."""
+        error = urllib.error.HTTPError('https://discord.com/api/v10/x', 404, 'Not Found', {'X-Test': '1'},
+                                       BytesIO(b'{"code": 10007}'))
+        with patch('people.discord_api.urllib.request.urlopen', side_effect=error):
+            status, body, headers = discord_api._send('GET', 'https://discord.com/api/v10/x', 'tok', {})
+        self.assertEqual((status, body, headers['X-Test']), (404, b'{"code": 10007}', '1'))
+        for raw in (b'\xff\xfe', b'{nie json', b'', None):
+            with self.subTest(raw=raw):
+                self.assertIsNone(discord_api._json(raw))
+        self.respond((200, {'nie': 'lista'}))
+        with self.assertRaisesMessage(DiscordError, 'nieczytelną listę członków'):
+            DiscordClient().members()
+        for data, headers, expected in (
+            ({'retry_after': 3}, {'Retry-After': '9'}, 3.0), ({}, {'Retry-After': '2.5'}, 2.5),
+            ([], {'Retry-After': '4'}, 4.0), (None, None, 1.0), ({}, {'Retry-After': 'jutro'}, 1.0),
+            ({'retry_after': -2}, {}, 0.0),
+        ):
+            with self.subTest(data=data, headers=headers):
+                self.assertEqual(discord_api._retry_after(data, headers), expected)
 
     def test_members_are_paged_by_last_id(self):
         """Lista członków: limit i „after” z ostatniego identyfikatora strony, koniec przy niepełnej stronie."""
@@ -415,6 +438,26 @@ class PlanTests(RankData, FakeDiscordMixin, TestCase):
         self.assertEqual(DiscordRoleChange.objects.filter(result=Result.ERROR).count(), 0)
         self.assertEqual(DiscordRoleChange.objects.filter(result=Result.RETRIED).count(), 4)
 
+    def test_invalid_token_stops_every_following_operation(self):
+        """401 przy pierwszej operacji: dalszych zapytań nie ma, każda operacja przebiegu zapisana jako błąd."""
+        self.approve()
+        self.fake.force('PUT', '/roles/', 401, {'code': 0, 'message': '401: Unauthorized'})
+        outcome = discord_sync.synchronize(source=DiscordRoleChange.Source.COMMAND)
+        self.assertEqual(len(self.fake.changes()), 1)
+        self.assertEqual(len(outcome.errors), len(outcome.changes))
+        self.assertEqual(len(outcome.errors), 4)
+        self.assertTrue(all('DISCORD_BOT_TOKEN' in change.response for change in outcome.errors))
+
+    def test_synchronize_without_bot_or_managed_ranks(self):
+        """Bez bota – błąd konfiguracji bez zapytań; z klientem, ale bez rang z mapowania – komunikat o rangach."""
+        with override_settings(DISCORD_BOT_TOKEN=''):
+            outcome = discord_sync.synchronize(source=DiscordRoleChange.Source.COMMAND)
+        self.assertEqual(outcome.error, discord_api.NOT_CONFIGURED)
+        DiscordRole.objects.update(sync_mode=Mode.OFF)
+        outcome = discord_sync.synchronize(source=DiscordRoleChange.Source.PANEL, client=DiscordClient())
+        self.assertEqual(outcome.error, discord_sync.NO_MANAGED_ROLES)
+        self.assertEqual(self.fake.calls, [])
+
     def test_orphan_revoke_errors_are_retried_by_full_run(self):
         """Nieudane odebranie rangi kontu już bez osoby (usunięta osoba) ponawia pełny przebieg – tylko w pełnej
         synchronizacji; konto, które w międzyczasie straciło rangę, nie jest ruszane."""
@@ -425,8 +468,12 @@ class PlanTests(RankData, FakeDiscordMixin, TestCase):
         DiscordRoleChange.objects.create(discord_user_id=uid(9), role_label='@redakcja', role_id=EDITOR_RANK,
                                          action='revoke', result=Result.ERROR, reason='usunięcie osoby z CMS-u',
                                          source='change', discord_role=self.rank)
+        DiscordRoleChange.objects.create(discord_user_id=uid(8), role_label='@redakcja', role_id=EDITOR_RANK,
+                                         action='revoke', result=Result.ERROR, reason='ponowna próba',
+                                         source='command', discord_role=self.rank)
         discord_sync.synchronize(source=DiscordRoleChange.Source.COMMAND)
-        self.assertIn(('DELETE', f'{uid(8)}/roles/{EDITOR_RANK}'), self.fake.changes())
+        # Dwa błędy tej samej pary (konto, ranga) – jedno ponowienie.
+        self.assertEqual(self.fake.changes().count(('DELETE', f'{uid(8)}/roles/{EDITOR_RANK}')), 1)
         self.assertNotIn(('DELETE', f'{uid(9)}/roles/{EDITOR_RANK}'), self.fake.changes())
         self.assertFalse(DiscordRoleChange.objects.filter(result=Result.ERROR).exists())
 
@@ -549,6 +596,17 @@ class ChangeSyncTests(RankData, FakeDiscordMixin, TestCase):
         with patch('people.discord_sync.sync_targets', side_effect=RuntimeError('nieoczekiwany')):
             self.committed(lambda: self.ewa.roles.remove(self.editor))
 
+    def test_member_read_error_in_full_mode_logs_revoke(self):
+        """Pełna synchronizacja: nieudany odczyt członka, który ma rangę bez prawa do niej – błąd odebrania do
+        ponowienia (bez zapytań o zmianę)."""
+        self.approve()
+        self.fake.force('GET', f'/members/{uid(5)}', 502)
+        self.committed(lambda: self.ewa.roles.remove(self.proofreader))
+        error = DiscordRoleChange.objects.get()
+        self.assertEqual((error.result, error.action, error.person, error.role_id),
+                         (Result.ERROR, 'revoke', self.ewa, EDITOR_RANK))
+        self.assertEqual(self.fake.changes(), [])
+
     def test_person_outside_server_and_unconfigured_bot(self):
         """Osoba spoza serwera – bez operacji i bez wpisu; bez konfiguracji bota – żadnych zapytań."""
         self.assertEqual(self.committed(lambda: self.daniel.roles.add(self.proofreader)), [])
@@ -604,10 +662,13 @@ class CommandTests(RankData, FakeDiscordMixin, TestCase):
         self.assertEqual(self.fake.calls, [])
 
     def test_fetch_error_is_command_error(self):
-        """Błąd pobrania członków (brak Server Members Intent) kończy komendę błędem z podpowiedzią."""
-        self.fake.force('GET', '/members', 403, {'code': 50001})
-        with self.assertRaisesMessage(CommandError, 'Server Members Intent'):
-            self.run_command()
+        """Błąd pobrania członków (brak Server Members Intent) kończy komendę błędem z podpowiedzią – także próbę."""
+        for args in ((), ('--dry-run',)):
+            with self.subTest(args=args):
+                self.fake.force('GET', '/members', 403, {'code': 50001})
+                with self.assertRaisesMessage(CommandError, 'Server Members Intent'):
+                    self.run_command(*args)
+        self.assertEqual(self.fake.changes(), [])
 
 
 # Panel admina
@@ -698,6 +759,38 @@ class RankAdminTests(RankData, FakeDiscordMixin, TestCase):
             'name': 'kopia', 'role_id': EDITOR_RANK, 'sync_mode': 'grant'})
         self.assertContains(add, 'Tę rangę (ID 500000000000000001) nadaje już @redakcja')
 
+    def test_rank_list_and_form_show_approval_state(self):
+        """Lista rang: pełna synchronizacja ze zmienionym mapowaniem – ostrzeżenie; formularz: data i osoba
+        zatwierdzenia; zapis rangi w trybie nadawania – informacja, kiedy mapowanie zadziała."""
+        approved_at = timezone.make_aware(timezone.datetime(2026, 10, 20, 14, 5))
+        DiscordRole.objects.filter(pk=self.rank.pk).update(
+            sync_mode=Mode.FULL, full_sync_approved_for=self.rank.mapping_key(), full_sync_approved_at=approved_at,
+            full_sync_approved_by=self.admin)
+        url = reverse('admin:core_discordrole_change', args=[self.rank.pk])
+        self.assertContains(self.client.get(url), 'Zatwierdzono 20.10.2026 14:05 (discord-admin)')
+        listing = reverse('admin:core_discordrole_changelist')
+        self.assertNotContains(self.client.get(listing), 'Mapowanie zmieniono po zatwierdzeniu')
+        DiscordRole.objects.get(pk=self.rank.pk).cms_roles.add(self.proofreader)
+        self.assertContains(self.client.get(listing), 'Mapowanie zmieniono po zatwierdzeniu')
+        self.assertContains(self.client.get(url), 'Nie zatwierdzono.')
+        DiscordRole.objects.filter(pk=self.rank.pk).update(sync_mode=Mode.GRANT)
+        response, messages = self.post(url, admin_form_data(self.client, url, 'discordrole_form'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('Mapowanie zadziała przy najbliższej zmianie osób', ' '.join(messages))
+
+    def test_sync_button_errors_and_nothing_to_do(self):
+        """„Synchronizuj teraz”: bez bota – komunikat błędu; zgodne rangi – informacja, że nic nie zmieniono."""
+        url = reverse('admin:core_discordrole_sync')
+        token = self.token(self.client.get(url))
+        with override_settings(DISCORD_BOT_TOKEN=''):
+            response, messages = self.post(url, {'token': token})
+        self.assertRedirects(response, url, fetch_redirect_response=False)
+        self.assertEqual(messages, [discord_api.NOT_CONFIGURED])
+        self.fake.members[uid(1)]['roles'].append(EDITOR_RANK)
+        response, messages = self.post(url, {'token': self.token(self.client.get(url))})
+        self.assertEqual(messages, ['Rangi są zgodne z CMS-em – nic nie zmieniono.'])
+        self.assertEqual(self.fake.changes(), [])
+
     def test_history_is_read_only_with_filters(self):
         """Historia: lista z filtrami i wyszukiwaniem, szczegóły tylko do odczytu, bez dodawania i usuwania."""
         discord_sync.synchronize(source=DiscordRoleChange.Source.PANEL, actor=self.admin)
@@ -714,6 +807,11 @@ class RankAdminTests(RankData, FakeDiscordMixin, TestCase):
         self.assertEqual(self.client.post(reverse('admin:core_discordrolechange_delete', args=[change.pk]),
                                           {'post': 'yes'}).status_code, 403)
         self.assertTrue(DiscordRoleChange.objects.filter(pk=change.pk).exists())
+        DiscordRoleChange.objects.create(discord_user_id=uid(8), role_label='@redakcja', role_id=EDITOR_RANK,
+                                         action='revoke', result=Result.DONE, reason='usunięcie osoby z CMS-u',
+                                         source='change')
+        self.assertContains(self.client.get(reverse('admin:core_discordrolechange_changelist')),
+                            f'konto {uid(8)} (bez osoby)')
 
     def test_person_screen_saves_discord_id_and_reports_sync(self):
         """Ekran osoby: identyfikator zapisany, synchronizacja po zapisie z komunikatem w panelu."""
@@ -862,6 +960,14 @@ class MatchingTests(TestCase):
         saved, errors = discord_matching.apply(result, {self.zofia.pk: uid(22)}, replace={self.zofia.pk})
         self.assertEqual((saved, errors), ([self.zofia], []))
         self.assertEqual(Person.objects.get(pk=self.zofia.pk).discord_id, uid(22))
+        # Ponowne wysłanie tego samego formularza – bez zmian i bez błędów.
+        self.assertEqual(discord_matching.apply(result, {self.zofia.pk: uid(22)}, replace=set()), ([], []))
+        # Konto przypisane innej osobie po wyświetleniu propozycji – błąd, bez zapisu.
+        Person.objects.filter(pk=self.lukasz.pk).update(discord_id=uid(4))
+        saved, errors = discord_matching.apply(result, {self.ola.pk: uid(4)}, replace=set())
+        self.assertEqual(saved, [])
+        self.assertIn(f'identyfikator {uid(4)} ma już inna osoba', errors[0])
+        self.assertIsNone(Person.objects.get(pk=self.ola.pk).discord_id)
 
 
 @tag('external')
@@ -893,6 +999,9 @@ class MatchingAdminTests(FakeDiscordMixin, TestCase):
         self.assertIn('Zapisano identyfikator Discorda: Anna Nowak.', messages)
         self.assertTrue(any('zaznacz „zastąp”' in m for m in messages))
         self.assertEqual(self.fake.changes(), [])
+        self.client.get(url)  # odczyt komunikatów poprzedniego zapisu
+        response = self.client.post(url, {f'link_{self.anna.pk}': ''})
+        self.assertEqual([str(m) for m in response.wsgi_request._messages], ['Nie zaznaczono żadnej propozycji.'])
 
     def test_page_errors(self):
         """Błąd Discorda i brak konfiguracji – komunikat zamiast propozycji, POST niczego nie zapisuje."""

@@ -18,7 +18,7 @@ from django.db import models, router
 
 from authors.models import Author
 
-from .models import Review
+from .models import Anthology, Review
 
 
 MAX_DUPLICATES_IN_WARNING = 10
@@ -293,6 +293,21 @@ def get_review_submission_warnings(
             "Kontrola obejmuje wszystkie nabory i stare recenzje."
         )
         warnings.append(warning)
+
+    if anthology_id and (author is not None or normalize_email(email)):
+        # Nabór cykliczny (Fantazmaty, nanoFantazje): poprzedni tekst autora do dowolnego tomu naboru przed
+        # upływem odstępu ustawionego na stronie „Dodaj do recenzji”.
+        from core.cyclic_recruitment import recent_submission_warning, recruitment_for
+        title_of_anthology = Anthology.objects.using(database).filter(pk=anthology_id).values_list(
+            'title', flat=True).first()
+        recruitment = recruitment_for(title_of_anthology or '')
+        if recruitment is not None and recruitment.interval_value:
+            candidates = _candidate_reviews(author=author, email=email, exclude_review_id=exclude_review_id,
+                                            using=database).select_related('anthology').only(
+                'pk', 'title', 'created_at', 'anthology__title')
+            warning = recent_submission_warning(recruitment, candidates)
+            if warning:
+                warnings.append(warning)
 
     if anthology_id:
         from core.supervision import duplicate_candidates

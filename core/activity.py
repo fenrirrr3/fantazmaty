@@ -54,6 +54,7 @@ LABELS = {
     'create_illustration': 'Utworzenie wpisu ilustracji',
     'recruitment_mailbox': 'Pobieranie próbek', 'recruitment_detail': 'Szczegóły zgłoszenia rekrutacyjnego',
     'recruitment_notified': 'Zmiana statusu Powiadomiony', 'review_bulk_import': 'Dodaj do recenzji',
+    'cyclic_recruitments': 'Zapis odstępów naborów cyklicznych',
     'novel_list': 'Powieści', 'novel_add': 'Dodanie powieści', 'novel_detail': 'Podgląd powieści', 'chapter_edit': 'Edycja rozdziału',
     'vocabulary_list': 'Słownik tagów i gatunków', 'vocabulary_suggestions': 'Podpowiedzi tagów i gatunków',
     'vocabulary_merge': 'Scalanie tagów i gatunków', 'update_text_audiobook': 'Zmiana nagrywania audiobooka',

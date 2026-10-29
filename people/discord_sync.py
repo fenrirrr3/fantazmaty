@@ -433,13 +433,11 @@ class _Batch:
             notify(changes)
 
 
-def _batch(using, create=True):
+def _batch(using):
     connection = connections[using]
     batch = getattr(connection, _PENDING_ATTR, None)
     if batch is not None and batch.is_registered(connection):
         return batch
-    if not create:
-        return None
     batch = _Batch(using)
     setattr(connection, _PENDING_ATTR, batch)
     return batch

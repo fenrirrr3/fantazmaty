@@ -140,7 +140,7 @@ ROUTE_LEVELS = {
         'core:data_integrity', 'core:person_permissions',
         'core:update_text_file', 'core:toggle_text_take_lock', 'core:author_suggestions', 'core:review_create',
         'core:correction_status', 'core:notification_queue', 'core:scheduled_rejections',
-        'core:release_hidden_review', 'core:review_bulk_import', 'core:user_activity',
+        'core:release_hidden_review', 'core:review_bulk_import', 'core:cyclic_recruitments', 'core:user_activity',
         'core:update_author_notification', 'core:copy_review_to_text', 'core:restart_text_workflow',
         'core:restore_withdrawn_text', 'core:add_author_note', 'core:split_mailing', 'core:site_www',
         'core:site_catalog', 'core:site_catalog_update', 'core:site_catalog_update_all', 'core:site_listen',

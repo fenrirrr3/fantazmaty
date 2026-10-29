@@ -125,13 +125,11 @@ class _Batch:
             notify(results)
 
 
-def _batch(using, create):
+def _batch(using):
     connection = connections[using]
     batch = getattr(connection, _PENDING_ATTR, None)
     if batch is not None and batch.is_registered(connection):
         return batch
-    if not create:
-        return None
     batch = _Batch(using)
     setattr(connection, _PENDING_ATTR, batch)
     return batch
@@ -146,7 +144,7 @@ def schedule(ids, using="default"):
         state = waiting_state(access)
         if state != access.state:
             DropboxAccess.objects.using(using).filter(pk=access.pk).update(state=state)
-    batch = _batch(using, create=True)
+    batch = _batch(using)
     batch.ids |= ids
     batch.register()
 
@@ -155,7 +153,7 @@ def report_to(request, notify, using="default"):
     """Wyniki synchronizacji z bieżącej transakcji trafią do notify(results); działania zapisze się na konto z request.
 
     Wywołuj w transakcji, przed zapisem (np. w atomic akcji admina), żeby partia nie wykonała się wcześniej."""
-    batch = _batch(using, create=True)
+    batch = _batch(using)
     batch.actor = getattr(request, "user", None)
     batch.notifiers.append(notify)
     batch.register()

@@ -71,7 +71,7 @@ def shift_month(first, months):
 
 
 def calendar_url(month=None, day=None, anchor=None, **params):
-    """Adres kalendarza: miesiąc (RRRR-MM), wybrany dzień i kotwica (domyślnie – komórka dnia)."""
+    """Adres kalendarza: miesiąc (RRRR-MM), wybrany dzień i kotwica."""
     query = QueryDict(mutable=True)
     if month is not None:
         query['month'] = f'{month:%Y-%m}'
@@ -79,8 +79,6 @@ def calendar_url(month=None, day=None, anchor=None, **params):
         query['day'] = day.isoformat()
     for key, value in params.items():
         query[key] = value
-    if anchor is None and day is not None:
-        anchor = f'social-day-{day:%Y-%m-%d}'
     encoded = query.urlencode()
     return reverse('core:social_calendar') + (f'?{encoded}' if encoded else '') + (f'#{anchor}' if anchor else '')
 

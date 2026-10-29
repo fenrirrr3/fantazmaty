@@ -21,7 +21,8 @@ from .support import LEGACY_EXAMPLE, NAMED_BODY, NAMED_MESSAGE, SUBMISSION_FIELD
 class IntakePanels(HTMLParser):
     """Zwijane panele ręcznego przyjmowania (<details class="intake-panel">): {nazwa: czy rozwinięty}."""
 
-    NAMES = {'data-manual-intake': 'manual', 'data-intake-bulk': 'bulk', 'data-intake-single': 'single'}
+    NAMES = {'data-cyclic-recruitments': 'cyclic', 'data-manual-intake': 'manual', 'data-intake-bulk': 'bulk',
+             'data-intake-single': 'single'}
 
     def __init__(self, content):
         super().__init__()
@@ -177,10 +178,11 @@ class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
         (wiele zgłoszeń przed pojedynczym); wyszukiwarka autorów tylko na tej stronie."""
         response = self.client.get(self.page_url)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(IntakePanels(response.content).panels, {'manual': False, 'bulk': False, 'single': False})
+        self.assertEqual(IntakePanels(response.content).panels,
+                         {'cyclic': False, 'manual': False, 'bulk': False, 'single': False})
         content = response.content.decode()
         order = ['<h1 class="page-title">Dodaj do recenzji</h1>', 'automatycznie doda zgłoszenia do bazy',
-                 'Pobierz nagłówki', 'Dodaj ręcznie (import masowy lub pojedyncze zgłoszenie)', 'Wiele zgłoszeń',
+                 'Nabory cykliczne: Fantazmaty', 'Pobierz nagłówki', 'Dodaj ręcznie (import masowy lub pojedyncze zgłoszenie)', 'Wiele zgłoszeń',
                  'Pojedyncze zgłoszenie']
         self.assertEqual(sorted(order, key=content.index), order)
         self.assertRegex(content, r'core/author-search(\.[0-9a-f]+)?\.js')
@@ -189,9 +191,9 @@ class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
     def test_manual_form_errors_open_their_section_on_merged_page(self):
         """Błąd ręcznego formularza: scalona strona (z częścią skrzynki) z rozwiniętą sekcją tego formularza."""
         cases = {
-            'single': (self.create_url, {'title': 'Błąd'}, {'manual': True, 'bulk': False, 'single': True}),
+            'single': (self.create_url, {'title': 'Błąd'}, {'cyclic': False, 'manual': True, 'bulk': False, 'single': True}),
             'bulk': (self.bulk_url, {'anthology': self.book.pk, 'records': 'Niepoprawne', 'import_action': 'preview'},
-                     {'manual': True, 'bulk': True, 'single': False}),
+                     {'cyclic': False, 'manual': True, 'bulk': True, 'single': False}),
         }
         for case, (url, data, panels) in cases.items():
             with self.subTest(case):

@@ -12,6 +12,7 @@ from core.social_models import SocialMediaEntry as SocialMediaEntry
 from core.social_models import SocialMediaQuote as SocialMediaQuote
 from core.social_models import TextSocialMedia as TextSocialMedia
 from core.social_models import SocialCalendarEntry as SocialCalendarEntry
+from core.cyclic_recruitment import CyclicRecruitment as CyclicRecruitment
 from core.notification_models import DiscordRole as DiscordRole
 from core.notification_models import NotificationRule as NotificationRule
 from core.notification_models import NotificationTemplate as NotificationTemplate

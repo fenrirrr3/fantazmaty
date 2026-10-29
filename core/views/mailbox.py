@@ -278,5 +278,34 @@ def mailbox_headers(request):
     # Zwinięta sekcja „Dodaj ręcznie”; po błędzie formularza ręcznego przekazuje ją render_intake_page.
     from core.views.intake import manual_intake
     context['manual'] = getattr(request, 'manual_intake', None) or manual_intake(request)
+    from core.cyclic_recruitment import settings_forms
+    context['cyclic_forms'] = getattr(request, 'cyclic_forms', None) or settings_forms()
+    context['cyclic_open'] = any(form.errors for form in context['cyclic_forms'])
     return render(request, 'core/review_bulk_import.html', context,
                   status=400 if context.get('error') else 200)
+
+
+@never_cache
+@login_required
+@require_http_methods(['POST'])
+@superuser_required
+def cyclic_recruitments(request):
+    """Zapis odstępów naborów cyklicznych (sekcja „Nabory cykliczne” na stronie „Dodaj do recenzji”)."""
+    from copy import copy
+    from django.http import QueryDict
+    from core.cyclic_recruitment import settings_forms
+    forms = settings_forms(request.POST)
+    if not all(form.is_valid() for form in forms):
+        # Strona jak przy GET, z rozwiniętą sekcją i błędami pól.
+        page = copy(request)
+        page.method, page.POST, page.cyclic_forms = 'GET', QueryDict(), forms
+        notifications.error(request, 'Nie zapisano odstępów naborów cyklicznych – popraw zaznaczone pola.')
+        response = mailbox_headers(page)
+        response.status_code = 400
+        return response
+    with transaction.atomic():
+        for form in forms:
+            form.save()
+    notifications.success(request, 'Zapisano odstępy naborów cyklicznych: ' + ', '.join(
+        f'{form.instance.name} – {form.instance.interval_label}' for form in forms) + '.')
+    return redirect('core:review_bulk_import')

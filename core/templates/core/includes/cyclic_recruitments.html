@@ -1,0 +1,13 @@
+{# Nabory cykliczne na stronie „Dodaj do recenzji”: odstęp od poprzedniego zgłoszenia autora (kontekst: cyclic_forms). #}
+<details class="card collapsible-card intake-panel cyclic-recruitments" id="nabory-cykliczne" data-cyclic-recruitments{% if cyclic_open %} open{% endif %}>
+<summary><span>Nabory cykliczne: {% for form in cyclic_forms %}{{ form.instance.name }} – {{ form.instance.interval_label }}{% if not forloop.last %}, {% endif %}{% endfor %}</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+<div class="intake-panel-body">
+<p class="form-help">Zgłoszenie do tomu naboru cyklicznego (temat maila albo antologia zaczyna się od nazwy naboru – numer tomu nie ma znaczenia, np. „Fantazmaty 6”, „nanoFantazje 1.0”) dostaje przy zapisie ostrzeżenie, jeśli od poprzedniego tekstu tego samego autora w dowolnym tomie tego naboru nie minął jeszcze ustawiony odstęp. Liczą się wszystkie zgłoszenia, także odrzucone i archiwalne. Puste pole – bez sprawdzania.</p>
+<form method="post" action="{% url 'core:cyclic_recruitments' %}" class="cyclic-recruitments-form" data-warn-unsaved>{% csrf_token %}
+{% for form in cyclic_forms %}<fieldset class="cyclic-recruitment"><legend>{{ form.instance.name }}</legend>
+<div class="form-field">{{ form.interval_value.label_tag }}{{ form.interval_value }}{{ form.interval_value.errors }}</div>
+<div class="form-field">{{ form.interval_unit.label_tag }}{{ form.interval_unit }}{{ form.interval_unit.errors }}</div>
+</fieldset>{% endfor %}
+<button class="primary-button" type="submit">Zapisz odstępy</button>
+</form>
+</div></details>

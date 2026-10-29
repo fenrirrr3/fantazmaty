@@ -526,6 +526,11 @@ class ReviewBulkImportForm(forms.Form):
         warning_cache = {}
         seen_submissions = {}
         canonical_records = []
+        # Nabór cykliczny: kilka różnych tekstów jednego autora w tym samym imporcie też łamie odstęp.
+        from core.cyclic_recruitment import recruitment_for
+        cyclic = recruitment_for(cleaned_data['anthology'].title)
+        cyclic = cyclic if cyclic is not None and cyclic.interval_value else None
+        seen_cyclic = {}
 
         for record in self.parsed_records:
             source = record.get('source_anthology', '')
@@ -574,6 +579,13 @@ class ReviewBulkImportForm(forms.Form):
                 )
             else:
                 seen_submissions[submission_key] = record["line_number"]
+                if cyclic is not None and identity in seen_cyclic:
+                    self.import_warnings.append(
+                        f"Wiersz {record['line_number']}: nabór cykliczny {cyclic.name}: ten sam autor ma w tym "
+                        f"imporcie inny tekst (wiersz {seen_cyclic[identity]}), a minimalny odstęp to "
+                        f"{cyclic.interval_label}. Sprawdź przed dodaniem."
+                    )
+                seen_cyclic.setdefault(identity, record["line_number"])
 
             canonical_records.append(record.copy())
 

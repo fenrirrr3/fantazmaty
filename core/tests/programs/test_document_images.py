@@ -331,6 +331,23 @@ class EmbeddedFontsTests(SimpleTestCase):
         self.assertNotIn(b'odttf', types)
         self.assertEqual(Document(stream).paragraphs[0].text, 'Ala ma kota.')
 
+    def test_font_types_declared_per_part_are_removed(self):
+        """Typy czcionek zapisane jako Override dla każdego pliku (LibreOffice, starsze Wordy) znikają razem
+        z plikami; typy pozostałych części zostają, pakiet jest poprawny."""
+        font_type = b'application/vnd.openxmlformats-officedocument.obfuscatedFont'
+        overrides = b''.join(b'<Override PartName="/word/fonts/font%d.odttf" ContentType="%s"/>' % (index, font_type)
+                             for index in (1, 2))
+        source = repack(docx_with_embedded_fonts(), {'[Content_Types].xml': lambda data: re.sub(
+            rb'<Default Extension="odttf"[^>]*/>', b'', data).replace(b'</Types>', overrides + b'</Types>')})
+        self.assertEqual(read(source, '[Content_Types].xml').count('/word/fonts/'), 2)
+        stream, removed = strip_embedded_fonts(BytesIO(source))
+        self.assertGreaterEqual(removed, 2 * FONT_FILE_BYTES)
+        types = read(stream.getvalue(), '[Content_Types].xml')
+        self.assertNotIn('/word/fonts/', types)
+        self.assertIn('PartName="/word/document.xml"', types)
+        self.assertEqual(package_problems(stream), [])
+        self.assertEqual(Document(stream).paragraphs[0].text, 'Ala ma kota.')
+
     def test_document_without_embedded_fonts_is_returned_unchanged(self):
         """Bez plików czcionek dokument wraca bez zmian; samo ustawienie osadzania (bez plików) jest usuwane,
         żeby Word nie osadził czcionek przy kolejnym zapisie."""
