@@ -466,7 +466,7 @@ class ReviewBulkImportForm(forms.Form):
                 "class": "review-import-textarea",
                 "rows": 16,
                 "spellcheck": "false",
-                "placeholder": 'Imię: Jan\nNazwisko: Kowalski\nPseudonim:\nTytuł opowiadania: Tytuł\nGatunek: fantasy\nOstrzeżenia o treści:\nLiczba znaków ze spacjami: 25000\nAdres e-mail: jan@example.com\nNumer telefonu:\nNewsletter: premierach, naborach\n\nWiadomość do redakcji:\n',
+                "placeholder": 'Imię: Jan\nNazwisko: Kowalski\nPseudonim:\nTytuł opowiadania: Tytuł\nGatunek: fantasy\nOstrzeżenia o treści:\nLiczba znaków ze spacjami: 25000\nAdres e-mail: jan@example.com\nNumer telefonu:\nNewsletter: tak\n\nWiadomość do redakcji:\n',
             }
         ),
     )

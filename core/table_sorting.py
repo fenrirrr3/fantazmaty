@@ -27,7 +27,7 @@ MODELS = {
   'Data przydziału': ('assigned', ('assigned_at',)), 'Ostatnia zmiana recenzji': ('changed', ('opinion_changed_at',)),
  },
  'people.person': {'Osoba': ('person', ('last_name','first_name')), 'Imię i nazwisko': ('person', ('last_name','first_name')), 'E-mail': ('email', ('email',))},
- 'core.newsletterconsent': {'Adres e-mail': ('email', ('email',)), 'Zgoda na newsletter o premierach': ('premieres', ('premieres',)), 'Zgoda na newsletter o naborach': ('recruitment', ('recruitment',))},
+ 'core.newsletterconsent': {'Adres e-mail': ('email', ('email',)), 'Newsletter ogólny': ('premieres', ('premieres',)), 'Tylko nabory': ('recruitment', ('recruitment',))},
  'authors.author': {'Autor': ('person', ('last_name','first_name')), 'Imię i nazwisko': ('person', ('last_name','first_name')), 'Pseudonim': ('pseudonym', ('pseudonym',)), 'E-mail': ('email', ('email',))},
  'texts.anthology': {'Antologia': ('title', ('title',)), 'Tytuł': ('title', ('title',)), 'Status': ('status', ('status',))},
  'people.vacation': {'Urlop od': ('start', ('start_date',)), 'Urlop do': ('end', ('end_date',)), 'Osoba': ('person', ('person__last_name','person__first_name')), 'Rozpoczęcie': ('start', ('start_date',)), 'Zakończenie': ('end', ('end_date',)), 'Data rozpoczęcia': ('start', ('start_date',)), 'Data zakończenia': ('end', ('end_date',))},

@@ -6,11 +6,26 @@ from core.models import NewsletterConsent
 from texts.services import normalize_email
 
 
+# Wartości pola „Newsletter” z formularzy naborów: „tak” – newsletter ogólny, „tylko nabory” – same nabory;
+# dawne „premierach” (= ogólny) i „naborach” (= nabory) nadal są rozpoznawane, „nie” to brak zgody.
+CONSENT_VALUES = {'tak': 'premieres', 'premierach': 'premieres', 'tylko nabory': 'recruitment',
+                  'naborach': 'recruitment', 'nie': None}
+
+
 def parse_consents(value):
-    tokens = {part.casefold() for part in re.split(r'[,\s]+', value.strip()) if part}
-    if tokens - {'premierach', 'naborach'}:
-        raise ValidationError('Zgody: dozwolone są „premierach”, „naborach”, obie wartości oddzielone przecinkiem lub puste pole.')
-    return {'premieres': 'premierach' in tokens, 'recruitment': 'naborach' in tokens}
+    words = [part.casefold() for part in re.split(r'[,\s]+', value.strip()) if part]
+    found = set()
+    while words:
+        phrase = ' '.join(words[:2])
+        if phrase in CONSENT_VALUES:
+            words = words[2:]
+        elif (phrase := words[0]) in CONSENT_VALUES:
+            words = words[1:]
+        else:
+            raise ValidationError('Zgody: dozwolone są „tak”, „tylko nabory” (dawniej „premierach”, „naborach”), '
+                                  'kilka wartości oddzielonych przecinkiem albo puste pole.')
+        found.add(CONSENT_VALUES[phrase])
+    return {'premieres': 'premieres' in found, 'recruitment': 'recruitment' in found}
 
 
 @transaction.atomic

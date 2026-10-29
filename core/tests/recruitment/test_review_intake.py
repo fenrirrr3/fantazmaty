@@ -186,6 +186,9 @@ class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
                  'Pojedyncze zgłoszenie']
         self.assertEqual(sorted(order, key=content.index), order)
         self.assertRegex(content, r'core/author-search(\.[0-9a-f]+)?\.js')
+        # Pojedyncze zgłoszenie: zgody jak w formularzach naborów.
+        self.assertIn('<span>Newsletter ogólny</span>', content)
+        self.assertIn('<span>Tylko nabory</span>', content)
         self.assertNotContains(self.client.get(reverse('core:home')), 'core/author-search.js')
 
     def test_manual_form_errors_open_their_section_on_merged_page(self):

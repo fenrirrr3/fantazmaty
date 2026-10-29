@@ -37,8 +37,8 @@ class ExtractForm(forms.ModelForm):
 
 
 class SingleReviewForm(ReviewAdminForm):
-    newsletter_premieres = forms.BooleanField(label="Zgoda na newsletter o premierach", required=False)
-    newsletter_recruitment = forms.BooleanField(label="Zgoda na newsletter o naborach", required=False)
+    newsletter_premieres = forms.BooleanField(label="Newsletter ogólny", required=False)
+    newsletter_recruitment = forms.BooleanField(label="Tylko nabory", required=False)
 
     """Te same podpisane ostrzeżenia co w istniejącym formularzu admina."""
     class Meta(ReviewAdminForm.Meta):
@@ -61,8 +61,6 @@ class SingleReviewForm(ReviewAdminForm):
         # the single-submission form has no such operation.
         self.fields.pop('confirm_existing_text', None)
         self.fields.pop('confirm_source_mismatch', None)
-        self.fields['newsletter_premieres'].label = 'Premierach'
-        self.fields['newsletter_recruitment'].label = 'Naborach'
         self.fields['anthology'].queryset = frontend_scope(Anthology.objects).filter(is_novel=False).filter(status=Anthology.Status.IN_PREPARATION).order_by('title', 'pk')
         self.fields['author'].widget.attrs['data-author-search-url'] = reverse('core:author_suggestions')
         from authors.models import Author

@@ -405,8 +405,8 @@ class NewsletterConsent(models.Model):
     """Separate opt-in register; never joined to public author/team projections."""
     objects = VersionedQuerySet.as_manager()
     email = models.EmailField('adres e-mail', unique=True)
-    premieres = models.BooleanField('newsletter o premierach', default=False)
-    recruitment = models.BooleanField('newsletter o naborach', default=False)
+    premieres = models.BooleanField('newsletter ogólny', default=False)
+    recruitment = models.BooleanField('tylko nabory', default=False)
     updated_at = models.DateTimeField('ostatnia aktualizacja', auto_now=True)
 
     class Meta:
