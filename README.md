@@ -101,18 +101,9 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
      Kod wyjścia 1 oznacza, że żadna skrzynka nie odpowiedziała; wynik widać też w adminie („Automatycznie pobrane nagłówki”).
    Zdublowane wpisy w spisie „Lektorzy/montażyści” scala akcja w panelu admina „Połącz zaznaczone profile w jeden”
    (zostaje najstarszy; nagrania i e-mail przechodzą na niego).
-   Import decyzji do naboru Ekstraktów z pliku TSV (UTF-8, tabulatory; nagłówek
-   `imię i nazwisko | pseudonim | e-mail | tytuły (rozdzielone |) | decyzja`, decyzja „przyjęte” albo „odrzucone”,
-   tytuły rozdzielone `|` – przecinki są częścią tytułu): najpierw podgląd
-   `python manage.py import_extracts plik.tsv --recruitment "Nazwa naboru" [--date RRRR-MM-DD]`, a po sprawdzeniu
-   to samo z `--apply`. Autor jest dopasowywany po e-mailu, potem po imieniu i nazwisku (imię = pierwsze słowo,
-   nazwisko = reszta); jego dane nie są zmieniane. Błąd dowolnego wiersza (np. czarna lista, tytuł z przeciwną
-   decyzją) oznacza, że nic nie zostanie zapisane. Plików z danymi autorów nie dodawaj do repozytorium (`import_data/`).
+   Plików z danymi autorów nie dodawaj do repozytorium (katalog `import_data/` jest pomijany przez git).
    Konta logowania podążają za osobą (e-mail osoby = login i nazwa użytkownika, odznaczenie „wciąż w ekipie”
    blokuje logowanie).
-   Pomocniczy spis zespołu w TSV (wiersz na osobę i rolę; kolumny: nazwisko i imię, e-mail, e-mail Dropbox, funkcja,
-   ID osoby, konta i autora) wypisuje `python manage.py export_team_members > zespol.tsv`; z `--include-inactive`
-   także dawni członkowie. To tylko raport z identyfikatorami do porównań, nie kopia bazy ani format importu.
    Powiadomienia Discord wysyła aplikacja na bieżąco. Komendy `dispatch_workflow_notifications`
    już nie ma – usuń to zadanie, jeśli jest zaplanowane.
    Dawnej wysyłki każdej zmiany workflow na jeden kanał (`DISCORD_WORKFLOW_CHANNEL`, `DISCORD_AUDIOBOOK_CHANNEL`)

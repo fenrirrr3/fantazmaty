@@ -406,13 +406,11 @@ class ExternalConsultantTests(AudioDescriptionTestData, TestCase):
         self.description.refresh_from_db()
         self.assertEqual((self.description.stage, self.description.content), ('writing', ''))
 
-    def test_external_consultant_absent_from_team_lists_exports_and_integrations(self):
+    def test_external_consultant_absent_from_team_lists_and_integrations(self):
         """Nowa osoba spoza ekipy z konsultacji nie trafia do: aktywnego zespołu, danych strony „Ekipa”
-        (fantazmaty.pl), eksportu zespołu, wyboru wykonawców innych zadań, Dropboxa ani Discorda.
+        (fantazmaty.pl), wyboru wykonawców innych zadań, Dropboxa ani Discorda.
         Członek ekipy z konsultacji zostaje na liście wykonawców (regresja)."""
-        from io import StringIO
         from unittest.mock import patch
-        from django.core.management import call_command
         from core.anthology_tasks import task_people
         from core.notification_models import DiscordNotification
         from core.site_team import people_by_role, team_payload
@@ -430,8 +428,6 @@ class ExternalConsultantTests(AudioDescriptionTestData, TestCase):
         self.assertNotIn('Tylko Konsultująca', names)
         self.assertNotIn('Konsultująca', str(team_payload()))
         new.roles.clear()
-        export = StringIO()
-        call_command('export_team_members', stdout=export)
         checks = {
             'aktywny zespół': Person.objects.active(),
             'wykonawcy zadań': task_people(),
@@ -440,7 +436,6 @@ class ExternalConsultantTests(AudioDescriptionTestData, TestCase):
             with self.subTest(case):
                 self.assertNotIn(new, people)
                 self.assertNotIn(self.external, people)
-        self.assertNotIn('Konsultująca', export.getvalue())
         # Dawny członek ekipy z konsultacji zostaje na liście wykonawców.
         self.assertIn(self.former, task_people())
 
