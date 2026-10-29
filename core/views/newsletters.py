@@ -14,9 +14,10 @@ from core.pagination import paginate_items
 def newsletter_list(request):
     rows = NewsletterConsent.objects.order_by('email', 'pk')
     selected = request.GET.get('consent', '')
+    # Ogólne – każdy z newsletterem ogólnym (także z zaznaczonymi naborami); Tylko nabory – nabory bez ogólnego.
     filters = {
         'general': {'premieres': True},
-        'recruitment': {'recruitment': True},
+        'recruitment': {'recruitment': True, 'premieres': False},
         'none': {'premieres': False, 'recruitment': False},
     }
     if selected in filters:

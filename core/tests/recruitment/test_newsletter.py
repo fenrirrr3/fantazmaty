@@ -60,6 +60,22 @@ class NewsletterListTests(TestCase):
             self.assertContains(response, text, html=False)
         self.assertNotContains(response, 'other@example.com')
 
+    def test_filters(self):
+        """Ogólne: newsletter ogólny (z naborami albo bez); Tylko nabory: nabory bez ogólnego; Brak zgody: żadnej."""
+        for email, premieres, recruitment in (('ogolny@example.test', True, False), ('oba@example.test', True, True),
+                                              ('nabory@example.test', False, True), ('brak@example.test', False, False)):
+            NewsletterConsent.objects.create(email=email, premieres=premieres, recruitment=recruitment)
+        self.client.force_login(create_superuser())
+        for consent, expected in {
+            'general': ['oba@example.test', 'ogolny@example.test'], 'recruitment': ['nabory@example.test'],
+            'none': ['brak@example.test'],
+            '': ['brak@example.test', 'nabory@example.test', 'oba@example.test', 'ogolny@example.test'],
+            'nieznany': ['brak@example.test', 'nabory@example.test', 'oba@example.test', 'ogolny@example.test'],
+        }.items():
+            with self.subTest(consent=consent):
+                response = self.client.get(reverse('core:newsletter_list'), {'consent': consent})
+                self.assertEqual([row.email for row in response.context['consents']], expected)
+
     def test_newsletter_sort_is_global_and_has_all_columns(self):
         """Sortowanie obejmuje wszystkie strony listy, a nie tylko bieżącą."""
         NewsletterConsent.objects.bulk_create(
