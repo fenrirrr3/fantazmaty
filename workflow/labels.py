@@ -14,13 +14,23 @@ def execution_label(label, number):
     return f'{label} (wyk. {number})' if number > 1 else label
 
 
+def assignment_number(assignment):
+    """Numer wykonania do pokazania: przy dodatkowym wykonaniu – numer jego etapu (wyk. 2, 3…), nie przydziału."""
+    if getattr(assignment, 'is_additional', False) and assignment.pk:
+        stage = next(iter(assignment.stages.all()), None)
+        if stage is not None:
+            return stage.execution_number
+    return assignment.execution_number
+
+
 def assignment_label(assignment):
     from workflow.archive_executions import archive_work_label
-    special = archive_work_label(assignment.text, assignment.role, assignment.execution_number) if assignment.text_id else None
+    number = assignment_number(assignment)
+    special = archive_work_label(assignment.text, assignment.role, number) if assignment.text_id else None
     if special:
         return special
     # An execution number describes the assignment's history, not a new role.
-    return execution_label(assignment.get_role_display(), assignment.execution_number)
+    return execution_label(assignment.get_role_display(), number)
 
 
 def stage_label(stage, text=None):

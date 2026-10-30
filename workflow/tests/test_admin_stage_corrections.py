@@ -333,6 +333,39 @@ class AdditionalExecutionTests(TestCase):
         self.assertEqual((other.work_active, other.work_completed), (False, True))
         self.assertTrue(second.work_active)
 
+    def test_number_counts_performed_work_not_assignment_rows(self):
+        """Jedna wykonana W1 po przekazaniu pracy (dwa przydziały roli) albo z wycofaną rezerwacją – dodatkowa W1
+        to „wyk. 2”; numer przydziału pozostaje osobny i unikalny dla roli."""
+        verifier, successor = create_member('verifier', 'Weryfikator'), create_member('successor', 'Weryfikator')
+        A.objects.create(text=self.text, role='verifier_1', assigned_to=verifier, is_current=False, execution_number=1)
+        handed = A.objects.create(text=self.text, role='verifier_1', assigned_to=successor, execution_number=2)
+        S.objects.create(text=self.text, stage_type='first_verification', is_completed=True, assignment=handed,
+                         started_at=self.today - timedelta(days=9), ended_at=self.today - timedelta(days=8))
+        S.objects.create(text=self.text, stage_type='first_verification', iteration=2, execution_number=2,
+                         is_current=False, is_released=False)  # wycofana rezerwacja
+        stage = self.add('first_verification', self.other)
+        self.assertEqual((stage.execution_number, stage.assignment.execution_number), (2, 3))
+        from workflow.labels import assignment_label, stage_label
+        self.assertEqual(stage_label(stage), 'Pierwsza weryfikacja (wyk. 2)')
+        self.assertTrue(assignment_label(stage.assignment).endswith('(wyk. 2)'))
+        self.assertEqual(self.add('first_verification', self.member).execution_number, 3)
+
+    def test_extra_execution_is_a_team_tile_on_text_page(self):
+        """Strona tekstu (moje-teksty/<numer>): dopisana osoba jest w kafelkach zespołu zaraz po swojej roli,
+        a nie w „Historii przypisań osób”."""
+        stage = self.add()
+        context = text_detail_context(user=self.admin, text=self.text)
+        tiles = [(member['role'], member['label'], member['user']['pk'] if member['user'] else None)
+                 for member in context['team_members']]
+        role_label = dict(A.Role.choices)['proofreader_1']
+        main = tiles.index(('proofreader_1', role_label, self.member.pk))
+        self.assertEqual(tiles[main + 1], ('proofreader_1', f'{role_label} (wyk. 2)', self.other.pk))
+        self.assertNotIn(stage.assignment.assigned_to.pk,
+                         [member['user']['pk'] for member in context['previous_team_members'] if member['user']])
+        self.client.force_login(self.admin)
+        page = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
+        self.assertContains(page, f'{role_label} (wyk. 2)')
+
     def test_completed_verification_does_not_require_repetition(self):
         """Zakończona W1 zwykle wymaga powtórzenia etapów – dodatkowe wykonanie nie."""
         verifier = create_member('verifier', 'Weryfikator')

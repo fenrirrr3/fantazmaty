@@ -133,7 +133,7 @@ def _add_execution(text, kind, performer, started_at, ended_at):
     assignment.full_clean()
     save_undated_assignment(assignment)
     stage = S(text=text, workflow_cycle=cycle, stage_type=kind, iteration=next_stage_iteration(text, kind),
-              assignment=assignment, execution_number=stage_execution_for(assignment), started_at=started_at,
+              assignment=assignment, execution_number=next_performed_execution(text, kind), started_at=started_at,
               ended_at=ended_at, is_completed=True, is_current=False, is_released=False,
               imported_completed=not (started_at and ended_at))
     from workflow.import_context import importing_completed
@@ -144,3 +144,15 @@ def _add_execution(text, kind, performer, started_at, ended_at):
     finally:
         importing_completed.reset(token)
     return stage
+
+
+def next_performed_execution(text, kind):
+    """Numer dodatkowego wykonania: kolejny po wykonaniach etapu, które naprawdę były (zakończone albo bieżące).
+
+    Nie liczy wycofanych rezerwacji ani numerów przydziałów (np. po przekazaniu pracy czy scaleniu), więc przy
+    jednej wykonanej pracy dodatkowa dostaje „wyk. 2”. Numer przydziału pozostaje osobny i unikalny dla roli.
+    """
+    from django.db.models import Max, Q
+    performed = S.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind).filter(
+        Q(is_completed=True) | Q(is_current=True))
+    return (performed.aggregate(number=Max('execution_number'))['number'] or 0) + 1

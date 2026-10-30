@@ -1,7 +1,7 @@
 from people import roles
 from core.public_authors import name_matches
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
-from workflow.labels import assignment_label, stage_label
+from workflow.labels import assignment_label, assignment_number, stage_label
 from core.translation_scope import frontend_scope, non_abandoned
 from core.filtering import facet_queryset, positive_id
 from datetime import date, timedelta
@@ -1081,12 +1081,22 @@ def _text_team_members(text, assignments):
                  'proofreader_1':3, 'proofreader_2':4, 'proofreader_3':5, 'proofreader_4':6,
                  'verifier_1':7, 'verifier_2':8, 'verifier_3':9,
                  'verification_coordinator':10, 'styling':11}
-        members = WorkflowRoleAssignment.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle,
-            stages__imported_completed=True, assigned_to__isnull=False).select_related('text','assigned_to__person_profile').distinct()
+        members = WorkflowRoleAssignment.objects.filter(
+            Q(stages__imported_completed=True) | Q(is_additional=True), text=text,
+            workflow_cycle=text.current_workflow_cycle, assigned_to__isnull=False,
+        ).select_related('text','assigned_to__person_profile').prefetch_related('stages').distinct()
         return [{'role':item.role, 'label':assignment_label(item), 'assignment':_assignment_data(item),
                  'is_assigned':True, 'archive_execution':True, 'user':_user_data(item.assigned_to)}
                 for item in sorted(members,key=lambda a:(order.get(a.role,99),a.execution_number,a.pk))]
     team_role_order = {role: i for i, (role, _) in enumerate(workflow_role_choices())}
+    # Jedno zapytanie o przydziały spoza bieżącego zestawu ról; dodatkowe wykonania bieżącego przebiegu (wyk. 2, 3…
+    # dopisane w adminie) to część obecnego zespołu tekstu, reszta – historia przypisań.
+    others = list(WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(
+        role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(workflow_cycle=text.current_workflow_cycle, is_current=True)
+        .select_related('assigned_to__person_profile').prefetch_related('stages')
+        .order_by('workflow_cycle', 'role', 'execution_number'))
+    additional = [item for item in others if item.is_additional and item.workflow_cycle == text.current_workflow_cycle]
+    previous = [item for item in others if item not in additional]
     return sorted([
             {
                 "role": role,
@@ -1102,12 +1112,16 @@ def _text_team_members(text, assignments):
             }
             for role, label in workflow_role_choices() if role != Role.STYLING
         ] + [
+            {"role": item.role, "label": assignment_label(item), "assignment": _assignment_data(item),
+             "user": _user_data(item.assigned_to), "is_assigned": True, "execution": assignment_number(item)}
+            for item in additional
+        ] + [
             {"role": item.role, "label": assignment_label(item), "archive_execution": is_archive_text(text),
              "is_previous": True, "is_assigned": True, "workflow_cycle": item.workflow_cycle,
              "user": _user_data(item.assigned_to)}
-            for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(
-                workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assigned_to__person_profile').order_by('workflow_cycle','role','execution_number')
-        ], key=lambda member: (team_role_order.get(member["role"], 999), bool(member.get("is_previous"))))
+            for item in previous
+        ], key=lambda member: (team_role_order.get(member["role"], 999), bool(member.get("is_previous")),
+                               member.get("execution", 0)))
 
 
 def _display_name(user):
