@@ -554,6 +554,8 @@ def _package_messages(
                                 use_cleaner=True,
                                 normalize=False,
                                 remove_fonts=True,
+                                # Miękkie entery jak w Odkurzaczu: nowe akapity, poza punktami list i nagłówkami.
+                                remove_soft_whitespace=True,
                                 timeout=deadline - time.monotonic(),
                                 wait_for_slot=min(30, max(0, deadline - time.monotonic())),
                             )
@@ -568,6 +570,7 @@ def _package_messages(
                                 upload,
                                 ["pdf", "epub"] if convert else [],
                                 use_cleaner=clean,
+                                remove_soft_whitespace=clean,
                                 timeout=deadline - time.monotonic(),
                                 wait_for_slot=min(30, max(0, deadline - time.monotonic())),
                                 include_docx=True,

@@ -56,13 +56,15 @@ def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
     source.seek(0)
     payload = source.read()
     steps = []
+    # Miękkie entery zamieniamy najpierw: przed przebudową (która pomija punktory list – punkt listy z miękkim
+    # enterem musi zostać rozpoznany jako punkt i nie zostać podzielony) i przed Odkurzaczem (jego reguły
+    # widzą już osobne akapity).
+    if remove_soft_whitespace:
+        steps.append((normalize_spacing_docx, {}))
     if rebuild:
         steps.append((rebuild_docx, {'allow_omissions': allow_omissions, 'keep_page_format': bool(keep_page_format)}))
     if normalize_formatting:
         steps.append((normalize_docx, {'justify': justify}))
-    # Miękkie entery zamieniamy przed Odkurzaczem, żeby jego reguły widziały już osobne akapity.
-    if remove_soft_whitespace:
-        steps.append((normalize_spacing_docx, {}))
     if cleaner_rules or use_cleaner:
         steps.append((clean_docx, {'rules': cleaner_rules, 'track_changes': bool(track_changes),
                                    'replacements': replacements, 'summary': summary}))

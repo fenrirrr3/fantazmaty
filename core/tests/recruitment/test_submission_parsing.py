@@ -301,6 +301,45 @@ class SubmissionPackagingTests(SimpleTestCase):
                     self.assertEqual(doc.paragraphs[0].text,
                                      'Koniec. Następne zdanie.' if clean else 'Koniec. następne zdanie.')
 
+    def test_soft_line_breaks_become_paragraphs_except_lists_and_headings(self):
+        """„Popraw pliki Odkurzaczem” (sam albo z przebudową i konwersją): miękki enter (Shift+Enter) w zwykłym
+        akapicie i tabeli staje się nowym akapitem, w punkcie listy i nagłówku zostaje; bez Odkurzacza – bez zmian."""
+        document = Document()
+        document.add_heading('Rozdział', level=1).runs[0].add_break()
+        document.paragraphs[-1].add_run('podtytuł')
+        paragraph = document.add_paragraph('Pierwsza linia')
+        paragraph.runs[0].add_break()
+        paragraph.add_run('druga linia')
+        item = document.add_paragraph('Punkt listy', style='List Bullet')
+        item.runs[0].add_break()
+        item.add_run('ciąg dalszy punktu')
+        cell = document.add_table(rows=1, cols=1).cell(0, 0).paragraphs[0]
+        cell.add_run('Komórka').add_break()
+        cell.add_run('druga w komórce')
+        stream = BytesIO()
+        document.save(stream)
+        row = {'uid': 12, 'folder': 'Opowieść', 'sender': 'Autor', 'files': [('tekst.docx', stream.getvalue())]}
+        with TemporaryDirectory() as tmp, self.settings(DOCUMENT_CONVERSION_DIR=Path(tmp)):
+            for clean, convert, rebuild in ((True, False, False), (True, False, True), (True, True, False),
+                                            (False, False, True)):
+                with (
+                    self.subTest(clean=clean, convert=convert, rebuild=rebuild),
+                    # Przebudowa pomija tabele i punktory list (potwierdzone), tekst punktu zostaje.
+                    _package_messages([row], clean, convert, rebuild, True) as out,
+                    ZipFile(out) as archive,
+                ):
+                    result = Document(BytesIO(archive.read(next(p for p in archive.namelist() if p.endswith('.docx')))))
+                    texts = [p.text for p in result.paragraphs if p.text.strip()]
+                    cells = [p.text for p in result.tables[0].cell(0, 0).paragraphs] if not rebuild else None
+                    if clean:
+                        self.assertIn('Pierwsza linia', texts)
+                        self.assertIn('druga linia', texts)
+                        self.assertIn(cells, (None, ['Komórka', 'druga w komórce']))
+                    else:
+                        self.assertIn('Pierwsza linia\ndruga linia', texts)
+                    self.assertIn('Rozdział\npodtytuł', texts)
+                    self.assertIn('Punkt listy\nciąg dalszy punktu', texts)
+
     def test_partial_archive_keeps_equal_titles_in_separate_folders(self):
         messages = [parse_message(12, csv_mail()), parse_message(13, csv_mail())]
         accepted, errors = [], []
@@ -427,14 +466,16 @@ class PackagingErrorTests(SimpleTestCase):
 
     @patch('core.services.mailbox_import.convert_document')
     def test_processed_documents_lose_embedded_fonts(self, convert):
-        """Każde przetworzenie DOCX ze skrzynki (Odkurzacz, konwersja, przebudowa) usuwa osadzone czcionki;
-        bez przetwarzania zapisujemy oryginał bez zmian."""
+        """Każde przetworzenie DOCX ze skrzynki (Odkurzacz, konwersja, przebudowa) usuwa osadzone czcionki,
+        a z Odkurzaczem także zamienia miękkie entery; bez przetwarzania zapisujemy oryginał bez zmian."""
         convert.side_effect = lambda *args, **kwargs: (BytesIO(b'przetworzony'), None, None)
         for options in ((True, False, False), (False, False, True)):
             with self.subTest(options=options):
                 convert.reset_mock()
                 _package_messages([self.message()], *options, True)
                 self.assertIs(convert.call_args.kwargs['remove_fonts'], True)
+                # Miękkie entery – tylko z Odkurzaczem (pierwsza opcja).
+                self.assertIs(convert.call_args.kwargs['remove_soft_whitespace'], options[0])
         convert.side_effect = lambda *args, **kwargs: converted()
         _package_messages([self.message()], False, True, False)
         self.assertIs(convert.call_args.kwargs['remove_fonts'], True)
