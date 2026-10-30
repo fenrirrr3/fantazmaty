@@ -523,3 +523,29 @@ table .copy-error {
         display: none;
     }
 }
+
+/* Pola wyboru w formularzach korekt workflow (brakujący etap, status, daty, korekta etapu i przypisania):
+   kwadrat przed podpisem, opis pod spodem z wcięciem – pole nie ginie między podpisem a długim opisem. */
+.cms-admin-check {
+    margin: var(--space-3) 0;
+}
+
+.cms-admin-check label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.cms-admin-check input[type="checkbox"] {
+    flex: none;
+    width: var(--space-4);
+    height: var(--space-4);
+    margin: 0;
+}
+
+.cms-admin-check .help {
+    margin: var(--space-1) 0 0 var(--space-5);
+    padding: 0;
+}

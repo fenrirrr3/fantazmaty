@@ -497,6 +497,34 @@ class AdditionalExecutionTests(TestCase):
         page = self.client.get(reverse('core:workflow_list'))
         self.assertContains(page, self.other.get_full_name())
 
+    def test_correction_forms_put_checkbox_before_label_with_help_below(self):
+        """Formularze korekt (brakujący etap, status, daty, korekta etapu i przypisania): każde pole wyboru jest
+        w podpisie przed jego tekstem, a opis – osobno pod spodem; pola i błędy formularza zostają."""
+        from lxml import html
+        self.client.force_login(self.admin)
+        pages = {
+            'brakujący etap': reverse('admin:texts_text_add_stage', args=[self.text.pk]),
+            'status': reverse('admin:texts_text_manual_status', args=[self.text.pk]),
+            'daty': reverse('admin:workflow_stage_dates', args=[self.open.pk]),
+            'korekta etapu': reverse('admin:workflow_stage_correct', args=[self.first.pk]),
+            'korekta przypisania': reverse('admin:workflow_assignment_correct', args=[self.first.assignment_id]),
+        }
+        for name, url in pages.items():
+            with self.subTest(name):
+                tree = html.fromstring(self.client.get(url).content.decode())
+                boxes = tree.xpath('//form//input[@type="checkbox"]')
+                for box in boxes:
+                    label = box.getparent()
+                    self.assertEqual((label.tag, label.get('for')), ('label', box.get('id')))
+                    self.assertIn('cms-admin-check', label.getparent().get('class'))
+                    self.assertTrue(label.xpath('./span/text()'))
+                self.assertTrue(tree.xpath('//form//input[@name="version"][@type="hidden"]'))
+        tree = html.fromstring(self.client.get(pages['brakujący etap']).content.decode())
+        help_text = tree.xpath('//input[@name="additional"]/ancestor::div[1]/p[@class="help"]/text()')
+        self.assertIn('bez powtórzenia, cofania i zmiany statusu', help_text[0])
+        error = self.client.post(pages['status'], {'stage': 'editing', 'version': version_of(self.text)})
+        self.assertContains(error, 'To pole jest wymagane.')
+
     def test_admin_form_saves_and_inline_shows_execution(self):
         self.client.force_login(self.admin)
         url = reverse('admin:texts_text_add_stage', args=[self.text.pk])

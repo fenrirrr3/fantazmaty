@@ -4,5 +4,5 @@
 <p>Ustaw daty tego wykonania etapu. Aby zakończyć bieżącą pracę, podaj obie daty i zaznacz „Zakończ etap i przekaż tekst dalej”. Kolejny etap powstanie zgodnie z workflow; w kolejce powtórzeń zostanie udostępniony następny wybrany etap.</p>
 {% if stage.is_completed %}<p>Ten etap jest już zakończony. Zapis poprawia daty istniejącego wykonania i zachowuje jego status oraz wykonawcę. Nieznane daty importowanej pracy można pozostawić puste.</p>{% endif %}
 {% if stage.stage_type == 'author_editing' and not stage.repetition_id %}<p>Zakończenie pracy autora wznawia redakcję z podaną datą zakończenia.</p>{% endif %}
-<form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Zapisz daty i wybraną operację"></div></form>
+<form method="post">{% csrf_token %}{% include 'admin/includes/correction_form_fields.html' %}<div class="submit-row"><input type="submit" class="default" value="Zapisz daty i wybraną operację"></div></form>
 {% endblock %}
