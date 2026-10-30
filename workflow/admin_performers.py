@@ -78,7 +78,7 @@ def performer_plan(text, changes):
             raise ValidationError('Status Gotowy, Wycofany lub Do redakcji nie ma wykonawcy.')
         assignment = stage.assignment
         merge_plan = None
-        if stage.repetition_id is None:
+        if stage.repetition_id is None and not (assignment and assignment.is_additional):
             merge_plan, _ = role_group(text._state.db or 'default', text, stage.workflow_cycle, role)
             if merge_plan:
                 assignment = merge_plan['assignment']

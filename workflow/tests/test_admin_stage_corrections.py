@@ -51,6 +51,8 @@ class AdminCorrectionStartTests(TestCase):
             'status': lambda actor, version: set_admin_status(self.text.pk, 'editing_control', actor, version),
             'dodanie etapu': lambda actor, version: add_missing_stage(self.text.pk, actor, version,
                                                                       kind='second_proofreading'),
+            'dodatkowe wykonanie': lambda actor, version: add_missing_stage(
+                self.text.pk, actor, version, kind='first_proofreading', performer=self.other, additional=True),
             'przypisanie': lambda actor, version: correct_assignment(self.assignment.pk, actor, version,
                                                                      action='clear'),
             'wykonawcy': lambda actor, version: correct_stage_performers(self.text.pk, {self.stage.pk: self.other},
@@ -265,6 +267,217 @@ class ReopenStageTests(TestCase):
         run.refresh_from_db()
         self.assertIsNotNone(run.completed_at)
         self.assertEqual(run.stages.count(), 1)
+
+
+class AdditionalExecutionTests(TestCase):
+    """„Dodaj brakujący etap” z opcją „Dodatkowe wykonanie istniejącego etapu”: zakończona praca kolejnej osoby
+    jako wyk. 2, 3… bez powtórzenia workflow, bez zmiany statusu, bieżącego wykonania i obciążenia."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.today = timezone.localdate()
+        cls.admin = create_superuser()
+        cls.member = create_member('member', 'Korektor')
+        cls.other = create_member('other', 'Korektor')
+        cls.book = Anthology.objects.create(title='Test')
+        cls.text = Text.objects.create(title='Tekst', length=100, anthology=cls.book)
+        cls.first = S.objects.create(
+            text=cls.text, stage_type='first_proofreading', is_completed=True,
+            started_at=cls.today - timedelta(days=10), ended_at=cls.today - timedelta(days=5),
+            assignment=A.objects.create(text=cls.text, role='proofreader_1', assigned_to=cls.member))
+        cls.second = create_member('second', 'Korektor')
+        cls.open = S.objects.create(
+            text=cls.text, stage_type='second_proofreading', started_at=cls.today - timedelta(days=2),
+            assignment=A.objects.create(text=cls.text, role='proofreader_2', assigned_to=cls.second))
+
+    def add(self, kind='first_proofreading', performer=None, **data):
+        from workflow.admin_add_stage import add_missing_stage
+        self.text.refresh_from_db()
+        return add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind=kind,
+                                 performer=performer or self.other, additional=True, **data)
+
+    @staticmethod
+    def state():
+        return (list(S.objects.filter(is_current=True).order_by('pk').values()),
+                list(A.objects.filter(is_current=True).order_by('pk').values()))
+
+    def test_completed_and_open_stage_get_next_execution_without_touching_workflow(self):
+        from workflow.labels import assignment_label, stage_label
+        before, status = self.state(), current_stage(list(self.text.workflow_stages.all())).pk
+        start, end = self.today - timedelta(days=4), self.today - timedelta(days=3)
+        cases = [
+            ('zakończony etap, inna osoba, z datami', 'first_proofreading', self.other,
+             {'started_at': start, 'ended_at': end}, 2, (start, end, False)),
+            ('ta sama osoba jeszcze raz, bez dat', 'first_proofreading', self.member, {}, 3, (None, None, True)),
+            ('sama data zakończenia', 'first_proofreading', self.other, {'ended_at': end}, 4, (None, end, True)),
+            ('etap otwarty (bieżący)', 'second_proofreading', self.other, {}, 2, (None, None, True)),
+        ]
+        for case, kind, performer, data, number, (started, ended, imported) in cases:
+            with self.subTest(case):
+                stage = self.add(kind, performer, **data)
+                self.assertEqual((stage.execution_number, stage.is_current, stage.is_released, stage.is_completed),
+                                 (number, False, False, True))
+                self.assertEqual((stage.started_at, stage.ended_at, stage.imported_completed), (started, ended, imported))
+                assignment = stage.assignment
+                self.assertEqual((assignment.assigned_to, assignment.execution_number, assignment.is_current,
+                                  assignment.assigned_at), (performer, number, False, None))
+                label = dict(S.StageType.choices)[kind]
+                self.assertEqual(stage_label(stage), f'{label} (wyk. {number})')
+                self.assertIn(f'(wyk. {number})', assignment_label(assignment))
+        self.assertEqual(self.state(), before)
+        self.assertEqual(current_stage(list(self.text.workflow_stages.all())).pk, status)
+        self.open.refresh_from_db()
+        self.assertFalse(self.open.is_completed)
+        # „Moje teksty”: dopisana osoba ma pracę zakończoną, nie aktywną; prowadzący nadal pracuje.
+        other, second = work_state(self.other, self.text), work_state(self.second, self.text)
+        self.assertEqual((other.work_active, other.work_completed), (False, True))
+        self.assertTrue(second.work_active)
+
+    def test_completed_verification_does_not_require_repetition(self):
+        """Zakończona W1 zwykle wymaga powtórzenia etapów – dodatkowe wykonanie nie."""
+        verifier = create_member('verifier', 'Weryfikator')
+        S.objects.create(text=self.text, stage_type='first_verification', is_completed=True,
+                         started_at=self.today - timedelta(days=9), ended_at=self.today - timedelta(days=8),
+                         assignment=A.objects.create(text=self.text, role='verifier_1', assigned_to=verifier))
+        stage = self.add('first_verification', self.other)
+        self.assertEqual((stage.execution_number, stage.assignment.role), (2, 'verifier_1'))
+
+    def test_invalid_requests_change_nothing(self):
+        before = list(S.objects.order_by('pk').values()), list(A.objects.order_by('pk').values())
+        end = self.today - timedelta(days=3)
+        for case, kwargs, message in (
+                ('bez wykonawcy', {'performer': None}, 'wymaga wykonawcy'),
+                ('etapu nie ma w przebiegu', {'kind': 'third_proofreading'}, 'Tego etapu nie ma jeszcze'),
+                ('tylko data rozpoczęcia', {'started_at': end}, 'podaj też datę zakończenia'),
+                ('zakończenie przed rozpoczęciem', {'started_at': end, 'ended_at': end - timedelta(days=1)},
+                 'nie może być wcześniejsza'),
+                ('razem z pracą historyczną', {'historical': True}, 'Wybierz jeden tryb'),
+                ('K1 dla osoby z otwartą K2', {'performer': self.second}, 'ma otwartą drugą lub trzecią korektę'),
+                ('etap spoza listy', {'kind': 'ready'}, 'Wybierz etap pracy'),
+        ):
+            with self.subTest(case):
+                kind = kwargs.pop('kind', 'first_proofreading')
+                performer = kwargs.pop('performer', self.other)
+                from workflow.admin_add_stage import add_missing_stage
+                with self.assertRaisesMessage(ValidationError, message):
+                    add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind=kind,
+                                      performer=performer, additional=True, **kwargs)
+        from workflow.admin_add_stage import add_missing_stage
+        with self.assertRaisesMessage(ValidationError, 'Nieprawidłowy tryb dodatkowego wykonania'):
+            add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind='first_proofreading',
+                              performer=self.other, additional='on')
+        self.assertEqual((list(S.objects.order_by('pk').values()), list(A.objects.order_by('pk').values())), before)
+
+    def test_extra_execution_is_corrected_with_existing_admin_tools(self):
+        """Zapisane dodatkowe wykonanie: korekta dat i wykonawcy jak w innych zakończonych etapach, „Cofnij
+        zakończenie” niedostępne (to nie bieżące wykonanie), usunięcie zabiera też jego przydział."""
+        from workflow.admin_stage_dates import set_stage_dates
+        stage = self.add()
+        start, end = self.today - timedelta(days=4), self.today - timedelta(days=3)
+        set_stage_dates(stage.pk, self.admin, version_of(self.text), started_at=start, ended_at=end)
+        stage.refresh_from_db()
+        self.assertEqual((stage.started_at, stage.ended_at, stage.is_current), (start, end, False))
+        third = create_member('third', 'Korektor')
+        edit_stage(stage.pk, self.admin, version_of(self.text), action='performer', performer=third)
+        stage.refresh_from_db()
+        self.assertEqual((stage.assignment.assigned_to, stage.execution_number), (third, 2))
+        with self.assertRaisesMessage(ValidationError, 'tylko aktualnego, zakończonego etapu'):
+            edit_stage(stage.pk, self.admin, version_of(self.text), action='reopen')
+        assignment = stage.assignment_id
+        edit_stage(stage.pk, self.admin, version_of(self.text), action='delete')
+        self.assertFalse(S.objects.filter(pk=stage.pk).exists())
+        self.assertFalse(A.objects.filter(pk=assignment).exists())
+        self.first.refresh_from_db()
+        self.assertTrue(self.first.is_current and self.first.is_completed)
+        self.assertEqual(current_stage(list(self.text.workflow_stages.all())).pk, self.open.pk)
+
+    def test_performer_correction_never_merges_main_and_extra_execution(self):
+        """Korekta wykonawcy głównego etapu nie wchłania dodatkowego wykonania (i odwrotnie) – scalanie
+        zdublowanych przydziałów roli pomija dodatkowe wykonania."""
+        from workflow.admin_performers import correct_stage_performers
+        extra = self.add()
+        third = create_member('third', 'Korektor')
+        correct_stage_performers(self.text.pk, {self.first.pk: third}, self.admin, version_of(self.text))
+        self.first.refresh_from_db()
+        extra.refresh_from_db()
+        self.assertEqual((self.first.assignment.assigned_to, self.first.assignment.is_current), (third, True))
+        self.assertEqual((extra.assignment.assigned_to, extra.assignment.is_current, extra.assignment.is_additional),
+                         (self.other, False, True))
+        self.assertNotEqual(self.first.assignment_id, extra.assignment_id)
+        correct_stage_performers(self.text.pk, {extra.pk: self.member}, self.admin, version_of(self.text))
+        self.first.refresh_from_db()
+        extra.refresh_from_db()
+        self.assertEqual((self.first.assignment.assigned_to, extra.assignment.assigned_to), (third, self.member))
+        self.assertEqual(A.objects.filter(text=self.text, role='proofreader_1').count(), 2)
+
+    def test_text_change_form_keeps_and_corrects_both_rows(self):
+        """Zapis strony tekstu w adminie z tabelą wykonawców: bez zmian – oba wykonania zostają; zmiana osoby
+        w wierszu „wyk. 2” zmienia tylko dodatkowe wykonanie."""
+        from authors.models import Author
+        from core.tests.people.support import admin_form_data
+        self.text.authors.add(Author.objects.create(first_name='Jan', last_name='Autor'))
+        extra = self.add()
+        self.client.force_login(self.admin)
+        url = reverse('admin:texts_text_change', args=[self.text.pk])
+        data = admin_form_data(self.client, url, 'text_form')
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        third = create_member('third', 'Korektor')
+        rows = [key for key, value in data.items() if key.endswith('-id') and value == str(extra.pk)]
+        self.assertEqual(len(rows), 1)
+        data = admin_form_data(self.client, url, 'text_form', **{rows[0].replace('-id', '-performer'): str(third.pk)})
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.first.refresh_from_db()
+        extra.refresh_from_db()
+        self.assertEqual((self.first.assignment.assigned_to, extra.assignment.assigned_to), (self.member, third))
+        self.assertEqual(A.objects.filter(text=self.text, role='proofreader_1').count(), 2)
+
+    def test_later_repetition_continues_numbering(self):
+        """Powtórzenie etapu po dodatkowym wykonaniu dostaje kolejny numer (wyk. 3), dodatkowe zostaje w historii."""
+        extra = self.add()
+        S.objects.filter(pk=self.open.pk).update(is_completed=True, ended_at=self.today)
+        self.text.refresh_from_db()
+        repeat_stages(self.text, ['first_proofreading'], self.admin)
+        repeated = S.objects.get(text=self.text, stage_type='first_proofreading', is_current=True)
+        self.assertEqual((repeated.execution_number, repeated.assignment.execution_number), (3, 3))
+        extra.refresh_from_db()
+        self.assertEqual((extra.execution_number, extra.is_current, extra.is_completed), (2, False, True))
+
+    def test_stage_only_in_previous_cycle_and_former_member(self):
+        """Etap z poprzedniego przebiegu to nie „istniejący etap”; dawny (nieaktywny) członek zespołu może zostać
+        dopisany jak przy pracy historycznej."""
+        former = create_member('former', 'Korektor')
+        type(former).objects.filter(pk=former.pk).update(is_active=False)
+        former.refresh_from_db()
+        self.assertEqual(self.add(performer=former).assignment.assigned_to, former)
+        Text.objects.filter(pk=self.text.pk).update(current_workflow_cycle=2)
+        with self.assertRaisesMessage(ValidationError, 'Tego etapu nie ma jeszcze w bieżącym przebiegu'):
+            self.add()
+
+    def test_extra_execution_is_visible_in_text_history_and_summary(self):
+        """Strona tekstu (historia dla koordynatora) i tabelka zbiorcza pokazują dopisaną osobę."""
+        stage = self.add()
+        detail = text_detail_context(user=self.admin, text=self.text)
+        archived = {row['pk'] for row in detail['archived_stages']}
+        self.assertIn(stage.pk, archived)
+        self.assertNotIn(stage.pk, {row['pk'] for row in detail['visible_stages']})
+        self.client.force_login(self.admin)
+        page = self.client.get(reverse('core:workflow_list'))
+        self.assertContains(page, self.other.get_full_name())
+
+    def test_admin_form_saves_and_inline_shows_execution(self):
+        self.client.force_login(self.admin)
+        url = reverse('admin:texts_text_add_stage', args=[self.text.pk])
+        page = self.client.get(url)
+        self.assertContains(page, 'Dodatkowe wykonanie istniejącego etapu (wyk. 2, 3…)')
+        self.assertContains(page, 'name="additional"')
+        response = self.client.post(url, {'kind': 'first_proofreading', 'performer': self.other.pk, 'additional': 'on',
+                                          'version': version_of(self.text)}, follow=True)
+        self.assertRedirects(response, reverse('admin:texts_text_change', args=[self.text.pk]))
+        self.assertContains(response, 'Zapisano etap i wykonawcę: Pierwsza korekta (wyk. 2).')
+        self.assertContains(response, 'Pierwsza korekta (wyk. 2)')
+        error = self.client.post(url, {'kind': 'third_proofreading', 'performer': self.other.pk, 'additional': 'on',
+                                       'version': version_of(self.text)})
+        self.assertContains(error, 'Tego etapu nie ma jeszcze w bieżącym przebiegu')
 
 
 class StageDeletionTests(TestCase):

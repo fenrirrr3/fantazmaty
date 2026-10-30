@@ -273,6 +273,8 @@ class ExtractsWorkflowTests(WorkflowTestDataMixin, TestCase):
             'status': lambda kind: set_admin_status(self.text.pk, kind, self.superuser, version_of(self.text)),
             'brakujący etap': lambda kind: add_missing_stage(self.text.pk, self.superuser, version_of(self.text),
                                                              kind=kind),
+            'dodatkowe wykonanie': lambda kind: add_missing_stage(self.text.pk, self.superuser, version_of(self.text),
+                                                                  kind=kind, performer=self.superuser, additional=True),
             'powtórzenie': lambda kind: validate_repeat(self.text, [kind]),
         }
         before = self.current_kinds()

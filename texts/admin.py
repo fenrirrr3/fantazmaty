@@ -791,6 +791,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             started_at = forms.DateField(label='Rozpoczęcie', required=False, widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'))
             ended_at = forms.DateField(label='Zakończenie', required=False, widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'))
             historical = forms.BooleanField(label='Uzupełnij zakończoną pracę historyczną (daty opcjonalne)', required=False, help_text='Nie rozpoczyna zadania ani nie zwiększa obciążenia. Można wybrać dawnego nieaktywnego wykonawcę.')
+            additional = forms.BooleanField(label='Dodatkowe wykonanie istniejącego etapu (wyk. 2, 3…)', required=False, help_text='Ktoś dodatkowo wykonał etap, który już jest w workflow: zapisuje zakończoną pracę tej osoby bez powtórzenia, cofania i zmiany statusu. Wymaga wykonawcy, daty opcjonalne.')
             version = forms.IntegerField(widget=forms.HiddenInput)
         form = AddStageForm(request.POST if request.method == 'POST' else None, initial={'version':version_of(obj)})
         if request.method == 'POST' and form.is_valid():
@@ -800,8 +801,10 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             except (ValidationError, PermissionDenied) as exc:
                 form.add_error(None, ' '.join(exc.messages) if isinstance(exc, ValidationError) else str(exc))
             else:
-                self.log_change(request, obj, 'Zapisano etap i wykonawcę: ' + stage.get_stage_type_display())
-                self.message_user(request, 'Zapisano etap i wykonawcę.')
+                from workflow.labels import stage_label
+                label = stage_label(stage, obj)
+                self.log_change(request, obj, 'Zapisano etap i wykonawcę: ' + label)
+                self.message_user(request, f'Zapisano etap i wykonawcę: {label}.')
                 return redirect('admin:texts_text_change', obj.pk)
         return TemplateResponse(request, 'admin/texts/text/add_stage.html', {**self.admin_site.each_context(request), 'title':'Dodaj brakujący etap: '+obj.title, 'form':form, 'original':obj, 'opts':self.model._meta, 'media':form.media})
 

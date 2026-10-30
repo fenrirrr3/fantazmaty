@@ -9,13 +9,22 @@ from workflow.services import STAGE_ROLES, _assign_role, ensure_verification_not
 from workflow.admin_status import admin_correction, save_undated_assignment, set_admin_status
 
 
-def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_at=None, ended_at=None, historical=False):
+def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_at=None, ended_at=None, historical=False,
+                      additional=False):
     with admin_correction(actor, version, text_id=text_id) as text:
         from workflow.catalog import active_stage_choices
         if kind not in dict(active_stage_choices()) or kind not in STAGE_ROLES:
             raise ValidationError('Wybierz etap pracy. Status zmienia się osobnym formularzem.')
         from workflow.catalog import require_stage_allowed
         require_stage_allowed(text, kind)
+        if type(additional) is not bool:
+            raise ValidationError('Nieprawidłowy tryb dodatkowego wykonania.')
+        if additional:
+            if historical:
+                raise ValidationError('Wybierz jeden tryb: dodatkowe wykonanie albo praca historyczna.')
+            stage = _add_execution(text, kind, performer, started_at, ended_at)
+            bump('texts.text', text.pk, text._state.db or 'default')
+            return stage
         if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
             raise ValidationError('Najpierw zakończ lub odwołaj kolejkę powtórzeń.')
         current = S.objects.current_cycle().filter(text=text)
@@ -95,3 +104,43 @@ def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_
             importing_completed.reset(token)
         bump('texts.text', text.pk, text._state.db or 'default')
         return stage
+
+
+def _add_execution(text, kind, performer, started_at, ended_at):
+    """Dodatkowe wykonanie etapu, który już jest w bieżącym przebiegu (np. druga osoba zrobiła tę samą korektę).
+
+    Zapisuje zakończoną pracę jako kolejne wykonanie (wyk. 2, 3…) poza kolejką: nie zmienia statusu, bieżącego
+    wykonania ani obciążenia i nie wymaga powtórzenia workflow. Daty są opcjonalne (obie albo sama data zakończenia).
+    """
+    if not performer:
+        raise ValidationError('Dodatkowe wykonanie wymaga wykonawcy.')
+    cycle = text.current_workflow_cycle
+    if not S.objects.filter(text=text, workflow_cycle=cycle, stage_type=kind).exists():
+        raise ValidationError('Tego etapu nie ma jeszcze w bieżącym przebiegu – dodaj go bez zaznaczania '
+                              '„Dodatkowe wykonanie”.')
+    if started_at and not ended_at:
+        raise ValidationError('Dodatkowe wykonanie to zakończona praca – podaj też datę zakończenia albo zostaw '
+                              'obie daty puste.')
+    if started_at and ended_at < started_at:
+        raise ValidationError('Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.')
+    role = STAGE_ROLES[kind]
+    if role == A.Role.PROOFREADER_1 and A.objects.filter(
+            text=text, assigned_to=performer, role__in=(A.Role.PROOFREADER_2, A.Role.PROOFREADER_3),
+            stages__is_current=True, stages__is_completed=False).exists():
+        raise ValidationError('Ta osoba ma otwartą drugą lub trzecią korektę. Pierwszą korektę musi wykonać inna osoba.')
+    assignment = A(text=text, workflow_cycle=cycle, role=role, assigned_to=performer, is_current=False,
+                   is_additional=True, execution_number=next_assignment_execution(text, role))
+    assignment.full_clean()
+    save_undated_assignment(assignment)
+    stage = S(text=text, workflow_cycle=cycle, stage_type=kind, iteration=next_stage_iteration(text, kind),
+              assignment=assignment, execution_number=stage_execution_for(assignment), started_at=started_at,
+              ended_at=ended_at, is_completed=True, is_current=False, is_released=False,
+              imported_completed=not (started_at and ended_at))
+    from workflow.import_context import importing_completed
+    token = importing_completed.set(stage.imported_completed)
+    try:
+        stage.full_clean()
+        stage.save()
+    finally:
+        importing_completed.reset(token)
+    return stage

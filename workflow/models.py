@@ -369,6 +369,10 @@ class WorkflowRoleAssignment(models.Model):
 
     execution_number = models.PositiveIntegerField("wykonanie przydziału", default=1, editable=False)
     is_current = models.BooleanField("aktualne przypisanie", default=True, editable=False)
+    is_additional = models.BooleanField(
+        "dodatkowe wykonanie", default=False, editable=False,
+        help_text="Zakończona praca kolejnej osoby przy istniejącym etapie (wyk. 2, 3…), dopisana w adminie – "
+                  "nie jest scalana z głównym przydziałem roli.")
     repetition = models.ForeignKey("WorkflowRepetition", null=True, blank=True, on_delete=models.RESTRICT, related_name="assignments", editable=False)
 
     role = models.CharField(

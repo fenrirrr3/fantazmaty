@@ -1225,7 +1225,8 @@ class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual(self.open_stage('first_verification').started_at, self.today)
 
     def test_admin_history_corrections_send_nothing(self):
-        """Uzupełnianie i poprawianie historii w adminie (brakujący etap – historyczny i z datami, korekta dat
+        """Uzupełnianie i poprawianie historii w adminie (brakujący etap – historyczny i z datami, dodatkowe
+        wykonanie istniejącego etapu, korekta dat
         zakończonego etapu, cofnięcie zakończenia, korekta wykonawcy) to korekta danych, nie zdarzenie: bez
         rozpoczęć i zakończeń etapów i bez ogłoszeń „do wzięcia”, choć zmiana trafia do dziennika zmian workflow. Ponowne
         zakończenie cofniętego etapu formularzem „Daty i przekazanie” wysyła wiadomości jak zwykle."""
@@ -1261,6 +1262,8 @@ class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
             ('brakujący etap z datami', lambda: add_stage('second_proofreading', self.proofreading_coordinator,
                                                           started_at=self.day, ended_at=self.day),
              lambda: stages.filter(stage_type='second_proofreading', is_completed=True).exists()),
+            ('dodatkowe wykonanie etapu', lambda: add_stage('second_verification', self.verifier_1, additional='on'),
+             lambda: stages.filter(stage_type='second_verification', execution_number=2, is_current=False).exists()),
         ]
         events = WorkflowEvent.objects.count()
         for case, action, done in steps:

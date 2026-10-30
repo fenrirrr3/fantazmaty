@@ -3,6 +3,7 @@
 {% block content %}
 <p>Dodaj brakujący etap i wybierz wykonawcę przez wyszukiwarkę. Daty zakończenia użyj tylko dla rzeczywiście zakończonej pracy; wtedy wymagane są obie daty.</p>
 <p>Zakończony etap uzupełni zapis prac, zachowując obecny status tekstu. Podczas aktywnej redakcji możesz wybrać pierwszą weryfikację i wykonawcę, pozostawiając obie daty puste i pole pracy historycznej niezaznaczone. W1 będzie oczekiwać na przekazanie; redakcja pozostanie aktywna. Jeśli oczekująca W1 już istnieje, zapis zmieni jej wykonawcę bez tworzenia kolejnego etapu lub przydziału. Pozostałe otwarte etapy można dodać tylko wtedy, gdy nie ma innej otwartej pracy.</p>
+<p>Gdy ktoś dodatkowo wykonał etap, który już jest w workflow (np. druga osoba zrobiła tę samą korektę), zaznacz „Dodatkowe wykonanie istniejącego etapu”: praca zapisze się jako kolejne wykonanie (wyk. 2, 3…), bez powtórzenia workflow i bez zmiany statusu.</p>
 <form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Dodaj etap"></div></form>
 <p><a href="{% url 'admin:texts_text_change' original.pk %}">Wróć do tekstu</a></p>
 {% endblock %}

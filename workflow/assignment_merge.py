@@ -12,8 +12,9 @@ from workflow.services import STAGE_ROLES
 
 
 def role_group(database, text, cycle, role):
-    rows = list(A.objects.using(database).filter(text_id=text.pk, workflow_cycle=cycle, role=role)
-                .order_by('execution_number', 'pk'))
+    # Dodatkowe wykonania (wyk. 2, 3… dopisane w adminie) to osobna praca, nie duplikat przydziału roli.
+    rows = list(A.objects.using(database).filter(text_id=text.pk, workflow_cycle=cycle, role=role,
+                                                 is_additional=False).order_by('execution_number', 'pk'))
     if role not in STAGE_ROLES.values() or not rows:
         return None, ''
     ids = {row.pk for row in rows}
