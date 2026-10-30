@@ -4,7 +4,7 @@
 <p>Historia pozostanie zachowana. Przed zapisaniem zmian zobaczysz podgląd kolejki i wykonawców.</p>
 <form method="post" action="{% url 'core:restart_text_workflow' text.pk %}">
     {% csrf_token %}{% edit_version %}
-    {{ form.as_p }}
+    {% include 'admin/includes/correction_form_fields.html' %}
     <input type="submit" value="Przygotuj podgląd powtórzenia">
 </form>
 <script src="{% static 'core/lookup.js' %}" defer></script><script src="{% static 'core/person-select.js' %}" defer></script>

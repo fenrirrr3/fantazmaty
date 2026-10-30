@@ -1300,7 +1300,7 @@ class Extract(NormalizedModelMixin, models.Model):
         MIXED = 'mixed', 'Przyjęte i odrzucone'
 
     status = models.CharField('rodzaj decyzji', max_length=20, choices=Status.choices, default=Status.NEW, editable=False)
-    updated_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='ostatnia zmiana')
 
     class Meta:
         verbose_name = 'udział autora w Ekstraktach'

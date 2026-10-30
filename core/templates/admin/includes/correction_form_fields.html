@@ -1,10 +1,11 @@
-{# Pola formularzy korekt workflow w panelu (zamiast form.as_p): pole wyboru przed podpisem, opis pod spodem. #}
+{# Pola własnych formularzy panelu (korekty workflow, usuwanie tekstu, powtórzenie): podpis nad polem, opis pod nim; #}
+{# pole wyboru przed swoim podpisem – nie ginie między podpisem a długim opisem. #}
 {{ form.non_field_errors }}
 {% for field in form.hidden_fields %}{{ field.errors }}{{ field }}{% endfor %}
 {% for field in form.visible_fields %}
 {% if field.widget_type == 'checkbox' %}
 <div class="cms-admin-check">{{ field.errors }}<label for="{{ field.id_for_label }}">{{ field }}<span>{{ field.label }}</span></label>{% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}</div>
 {% else %}
-<p>{{ field.errors }}{{ field.label_tag }} {{ field }}{% if field.help_text %} <span class="helptext">{{ field.help_text }}</span>{% endif %}</p>
+<div class="cms-admin-field">{{ field.errors }}{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}</div>
 {% endif %}
 {% endfor %}

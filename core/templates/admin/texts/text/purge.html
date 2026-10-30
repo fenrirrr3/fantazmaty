@@ -8,7 +8,7 @@
 <ul>{% for label, count in summary %}<li>{{ label }}: {{ count }}</li>{% empty %}<li>bez etapów i historii – usunięty zostanie sam tekst</li>{% endfor %}</ul>
 <p>Nic poza tym nie zostanie usunięte: osoby, autorzy, antologia i errata zostają. Zgłoszenie, z którego powstał tekst, zostaje w recenzjach, ale nie wróci do listy „do przeniesienia”.</p>
 {% if published %}<p class="errornote">Antologia jest oznaczona jako wydana – upewnij się, że ten tekst naprawdę ma zniknąć z jej spisu.</p>{% endif %}
-<form method="post">{% csrf_token %}{{ form.non_field_errors }}{{ form.as_p }}
+<form method="post">{% csrf_token %}{% include 'admin/includes/correction_form_fields.html' %}
 <div class="submit-row"><input type="submit" value="Usuń trwale" class="deletelink"></div></form>
 {% endif %}
 <p><a href="{% url 'admin:texts_text_change' original.pk %}">Wróć do tekstu</a></p>

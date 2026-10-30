@@ -73,9 +73,9 @@ class WorkflowStage(models.Model):
     is_current = models.BooleanField("aktualne wykonanie", default=True, editable=False)
     is_released = models.BooleanField("dostępny w kolejce", default=True, editable=False)
     queued_at = models.DateField("data wejścia do kolejki", null=True, blank=True, editable=False)
-    repetition = models.ForeignKey("WorkflowRepetition", null=True, blank=True, on_delete=models.RESTRICT, related_name="stages", editable=False)
-    queue_position = models.PositiveIntegerField(default=0, editable=False)
-    assignment = models.ForeignKey("WorkflowRoleAssignment", null=True, blank=True, on_delete=models.RESTRICT, related_name="stages", editable=False)
+    repetition = models.ForeignKey("WorkflowRepetition", null=True, blank=True, on_delete=models.RESTRICT, related_name="stages", editable=False, verbose_name='powtórzenie')
+    queue_position = models.PositiveIntegerField(default=0, editable=False, verbose_name='pozycja w kolejce powtórzeń')
+    assignment = models.ForeignKey("WorkflowRoleAssignment", null=True, blank=True, on_delete=models.RESTRICT, related_name="stages", editable=False, verbose_name='przypisanie roli')
 
     stage_type = models.CharField(
         "etap",
@@ -373,7 +373,7 @@ class WorkflowRoleAssignment(models.Model):
         "dodatkowe wykonanie", default=False, editable=False,
         help_text="Zakończona praca kolejnej osoby przy istniejącym etapie (wyk. 2, 3…), dopisana w adminie – "
                   "nie jest scalana z głównym przydziałem roli.")
-    repetition = models.ForeignKey("WorkflowRepetition", null=True, blank=True, on_delete=models.RESTRICT, related_name="assignments", editable=False)
+    repetition = models.ForeignKey("WorkflowRepetition", null=True, blank=True, on_delete=models.RESTRICT, related_name="assignments", editable=False, verbose_name='powtórzenie')
 
     role = models.CharField(
         "rola",
@@ -616,16 +616,16 @@ class WorkflowRoleAssignment(models.Model):
 
 class WorkflowRepetition(models.Model):
     objects = VersionedQuerySet.as_manager()
-    text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="repetitions")
-    selected_stages = models.JSONField(default=list)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(auto_now_add=True)
-    completed_at = models.DateTimeField(null=True, blank=True)
-    canceled_at = models.DateTimeField(null=True, blank=True)
-    canceled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="canceled_workflow_repetitions")
-    cancellation_reason = models.CharField(max_length=255, blank=True)
-    previous_stage_ids = models.JSONField(default=list, editable=False)
-    previous_assignment_ids = models.JSONField(default=list, editable=False)
+    text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="repetitions", verbose_name='tekst')
+    selected_stages = models.JSONField(default=list, verbose_name='wybrane etapy')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, verbose_name='utworzył(a)')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='utworzono')
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name='zakończono')
+    canceled_at = models.DateTimeField(null=True, blank=True, verbose_name='odwołano')
+    canceled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="canceled_workflow_repetitions", verbose_name='odwołał(a)')
+    cancellation_reason = models.CharField(max_length=255, blank=True, verbose_name='powód odwołania')
+    previous_stage_ids = models.JSONField(default=list, editable=False, verbose_name='etapy sprzed powtórzenia')
+    previous_assignment_ids = models.JSONField(default=list, editable=False, verbose_name='przypisania sprzed powtórzenia')
 
     class Meta:
         verbose_name = "powtórzenie etapów"
@@ -636,14 +636,14 @@ class WorkflowRepetition(models.Model):
 
 
 class WorkflowHandoff(models.Model):
-    text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="workflow_handoffs")
-    stage = models.ForeignKey(WorkflowStage, on_delete=models.PROTECT, related_name="handoffs")
-    previous_assignment = models.ForeignKey(WorkflowRoleAssignment, on_delete=models.PROTECT, related_name="handoffs_from")
-    new_assignment = models.ForeignKey(WorkflowRoleAssignment, on_delete=models.PROTECT, related_name="handoffs_to")
-    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(auto_now_add=True)
-    original_started_at = models.DateField(null=True, blank=True)
-    reason = models.TextField(blank=True)
+    text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="workflow_handoffs", verbose_name='tekst')
+    stage = models.ForeignKey(WorkflowStage, on_delete=models.PROTECT, related_name="handoffs", verbose_name='etap')
+    previous_assignment = models.ForeignKey(WorkflowRoleAssignment, on_delete=models.PROTECT, related_name="handoffs_from", verbose_name='poprzednie przypisanie')
+    new_assignment = models.ForeignKey(WorkflowRoleAssignment, on_delete=models.PROTECT, related_name="handoffs_to", verbose_name='nowe przypisanie')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, verbose_name='kto przekazał')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='data przekazania')
+    original_started_at = models.DateField(null=True, blank=True, verbose_name='pierwotna data rozpoczęcia')
+    reason = models.TextField(blank=True, verbose_name='powód')
 
     class Meta:
         verbose_name = "przekazanie pracy"

@@ -102,7 +102,7 @@ class Recruitment(models.Model):
     email = models.EmailField('adres e-mail')
     status = models.CharField('status', max_length=20, choices=Status.choices, default=Status.NEW)
     notes = models.TextField('uwagi', blank=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='ostatnia zmiana')
 
     class Meta:
         verbose_name = 'zgłoszenie rekrutacyjne'
@@ -202,7 +202,7 @@ class RecruitmentRoleDecision(models.Model):
 
 
 class UserActivity(models.Model):
-    source_key = models.CharField(max_length=32, unique=True, null=True, blank=True, editable=False)
+    source_key = models.CharField(max_length=32, unique=True, null=True, blank=True, editable=False, verbose_name='klucz źródła wpisu')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='cms_activities', verbose_name='użytkownik')
     actor = models.CharField('konto', max_length=254)
     # Czas żądania; flush_activity przepisuje go z kolejki lokalnej.
@@ -230,18 +230,18 @@ class WorkflowEvent(models.Model):
         WORKFLOW = 'workflow', 'Workflow tekstu'
         AUDIOBOOK = 'audiobook', 'Produkcja audiobooka'
 
-    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.WORKFLOW, db_index=True, editable=False)
-    personal_work = models.BooleanField(default=False, db_index=True, editable=False)
-    personal_work_description = models.CharField(max_length=255, blank=True, editable=False)
-    text = models.ForeignKey('texts.Text', null=True, on_delete=models.SET_NULL)
-    title = models.TextField()
-    authors = models.TextField(blank=True)
-    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
-    actor_name = models.CharField(max_length=300)
-    previous_status = models.CharField(max_length=100)
-    next_status = models.CharField(max_length=100)
-    details = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.WORKFLOW, db_index=True, editable=False, verbose_name='rodzaj zdarzenia')
+    personal_work = models.BooleanField(default=False, db_index=True, editable=False, verbose_name='praca osobista')
+    personal_work_description = models.CharField(max_length=255, blank=True, editable=False, verbose_name='opis pracy osobistej')
+    text = models.ForeignKey('texts.Text', null=True, on_delete=models.SET_NULL, verbose_name='tekst')
+    title = models.TextField(verbose_name='tytuł')
+    authors = models.TextField(blank=True, verbose_name='autorzy')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, verbose_name='kto')
+    actor_name = models.CharField(max_length=300, verbose_name='kto (podpis)')
+    previous_status = models.CharField(max_length=100, verbose_name='poprzedni status')
+    next_status = models.CharField(max_length=100, verbose_name='nowy status')
+    details = models.TextField(blank=True, verbose_name='szczegóły')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='data')
 
     class Meta:
         ordering = ('-created_at', '-pk')
@@ -364,12 +364,12 @@ class MailboxConnection(models.Model):
 
 class MailboxHeaderSnapshot(models.Model):
     """Nagłówki pobrane automatycznie (zadanie nocne) – sama lista nagłówków, bez treści i załączników."""
-    mailbox = models.OneToOneField(MailboxConnection, on_delete=models.CASCADE, related_name='header_snapshot')
+    mailbox = models.OneToOneField(MailboxConnection, on_delete=models.CASCADE, related_name='header_snapshot', verbose_name='skrzynka')
     mailbox_key = models.CharField(max_length=64)
-    sent_since = models.CharField(max_length=10, blank=True, default='')
+    sent_since = models.CharField(max_length=10, blank=True, default='', verbose_name='wysłane od')
     result = models.JSONField(default=dict)
-    error = models.TextField(blank=True, default='')
-    fetched_at = models.DateTimeField()
+    error = models.TextField(blank=True, default='', verbose_name='błąd')
+    fetched_at = models.DateTimeField(verbose_name='pobrano')
 
     class Meta:
         verbose_name = 'automatycznie pobrane nagłówki'

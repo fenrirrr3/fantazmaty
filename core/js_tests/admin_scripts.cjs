@@ -51,12 +51,13 @@ n.toggle(n.groups[0], true); assert.deepEqual(n.localStorage.data, {[P + 'group:
 
 // admin-inlines.js
 const doc = new Document();
-const inline = (id, heading) => {
-    const link = doc.el('a', {}, 'Dodaj kolejny Workflow stage');
+const inline = (id, heading, text = 'Dodaj kolejny Workflow stage') => {
+    const link = doc.el('a', {}, text);
     return doc.el('div', {id, className: 'inline-group'}, doc.el('h2', {}, heading), doc.el('div', {className: 'add-row'}, link));
 };
 const groups = [inline('workflow_stages-group', 'Etapy'), inline('workflow_role_assignments-group', 'Role'),
-    inline('notes-group', 'Notatki o autorze'), inline('texts-group', 'Teksty')];
+    inline('notes-group', 'Notatki o autorach', 'Dodaj kolejne(go)(-ną)(-ny) Notatka o autorze'), inline('texts-group', 'Teksty'),
+    inline('templates-group', 'Treści wiadomości', 'Dodaj kolejne(go)(-ną)(-ny) Treść wiadomości')];
 doc.body.append(...groups);
 const observers = [], frames = [];
 class MutationObserver {
@@ -65,8 +66,10 @@ class MutationObserver {
 }
 runScript('admin-inlines.js', doc, {MutationObserver, requestAnimationFrame: fn => frames.push(fn)}); ready(doc);
 const label = group => group.querySelector('.add-row a').textContent;
-assert.deepEqual(groups.map(label), ['Dodaj kolejny etap pracy', 'Dodaj kolejne przypisanie roli', 'Dodaj kolejną notatkę o autorze', 'Dodaj kolejny Workflow stage']);
-assert.equal(observers.length, 4); assert.equal(JSON.stringify(observers[0].options), '{"childList":true,"subtree":true}'); assert.equal(observers[0].target, groups[0]);
+// Notatki o autorach (nagłówek w liczbie mnogiej) i dowolny inny formularz: bez form „kolejne(go)(-ną)(-ny)”.
+assert.deepEqual(groups.map(label), ['Dodaj kolejny etap pracy', 'Dodaj kolejne przypisanie roli', 'Dodaj kolejną notatkę o autorze',
+    'Dodaj kolejny Workflow stage', 'Dodaj: Treść wiadomości']);
+assert.equal(observers.length, 5); assert.equal(JSON.stringify(observers[0].options), '{"childList":true,"subtree":true}'); assert.equal(observers[0].target, groups[0]);
 // Django dodaje nowy wiersz i link – po zmianach w DOM etykieta jest poprawiana raz na klatkę.
 groups[0].querySelector('.add-row').replaceChildren(doc.el('a', {}, 'Dodaj kolejny Workflow stage'));
 observers[0].callback(); observers[0].callback();

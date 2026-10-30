@@ -236,8 +236,8 @@ class DiscordNotification(models.Model):
     status = models.CharField('stan', max_length=12, default='pending', choices=(
         ('pending', 'Oczekuje'), ('sending', 'Wysyłanie / brak potwierdzenia'), ('sent', 'Wysłano'),
         ('failed', 'Błąd wysyłki'), ('unknown', 'Brak potwierdzenia'), ('disabled', 'Brak skonfigurowanego kanału')))
-    message_id = models.CharField(max_length=30, blank=True)
-    sending_started_at = models.DateTimeField(null=True, blank=True, editable=False)
+    message_id = models.CharField(max_length=30, blank=True, verbose_name='identyfikator wiadomości na Discordzie')
+    sending_started_at = models.DateTimeField(null=True, blank=True, editable=False, verbose_name='rozpoczęcie wysyłki')
     created_at = models.DateTimeField('utworzono', auto_now_add=True)
 
     class Meta:

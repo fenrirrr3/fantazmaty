@@ -6,7 +6,7 @@ from django.db import models
 
 class ExtractVolume(models.Model):
     anthology = models.OneToOneField(
-        "texts.Anthology", on_delete=models.PROTECT, related_name="extract_volume"
+        "texts.Anthology", on_delete=models.PROTECT, related_name="extract_volume", verbose_name='antologia'
     )
     number = models.PositiveSmallIntegerField(
         "tom", unique=True, choices=((1, "1"), (2, "2"), (3, "3"))

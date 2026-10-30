@@ -19,6 +19,24 @@ class CMSModelAdminMixin(PeopleChoiceMixin):
 
         return PageSizeChangeList
 
+    # Tytuły stron bez polskiej odmiany z tłumaczenia Django („Wybierz uwaga do antologii do zmiany”,
+    # „Dodaj rola Discorda”): lista – nazwa w liczbie mnogiej, formularz – „Dodawanie: …”, „Edycja: …”, „Podgląd: …”.
+    # Własny tytuł widoku (extra_context) ma pierwszeństwo.
+    def changelist_view(self, request, extra_context=None):
+        from django.utils.text import capfirst
+        title = capfirst(str(self.model._meta.verbose_name_plural))
+        return super().changelist_view(request, {'title': title, **(extra_context or {})})
+
+    def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        name = str(self.model._meta.verbose_name)
+        if object_id is None:
+            title = f'Dodawanie: {name}'
+        else:
+            from django.contrib.admin.utils import unquote
+            obj = self.get_object(request, unquote(object_id))
+            title = f'Edycja: {name}' if obj is None or self.has_change_permission(request, obj) else f'Podgląd: {name}'
+        return super().changeform_view(request, object_id, form_url, {'title': title, **(extra_context or {})})
+
     def get_changelist_instance(self, request):
         from core.pagination import get_page_size, ALLOWED_PAGE_SIZES
         scoped = copy(self)

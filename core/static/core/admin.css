@@ -524,7 +524,7 @@ table .copy-error {
     }
 }
 
-/* Pola wyboru w formularzach korekt workflow (brakujący etap, status, daty, korekta etapu i przypisania):
+/* Pola wyboru we własnych formularzach panelu (korekty workflow, usuwanie tekstu, powtórzenie, test powiadomień):
    kwadrat przed podpisem, opis pod spodem z wcięciem – pole nie ginie między podpisem a długim opisem. */
 .cms-admin-check {
     margin: var(--space-3) 0;
@@ -548,4 +548,40 @@ table .copy-error {
 .cms-admin-check .help {
     margin: var(--space-1) 0 0 var(--space-5);
     padding: 0;
+}
+
+/* Pozostałe pola własnych formularzy panelu: podpis nad polem, opis pod nim (zamiast jednej linii z form.as_p,
+   w której długi opis zawijał się obok listy wyboru). */
+.cms-admin-field {
+    margin: var(--space-3) 0;
+}
+
+.cms-admin-field > label {
+    display: block;
+    margin-bottom: var(--space-1);
+    font-weight: 600;
+}
+
+.cms-admin-field .help {
+    margin: var(--space-1) 0 0;
+    padding: 0;
+}
+
+/* Podpisy pól wyboru w formularzach admina (pojedyncze pole i lista pól wyboru): na całą szerokość zamiast
+   kolumny podpisów (160 px) – „Sprawdziłem podobnych autorów…”, „Promocja i social media” nie łamią się co słowo. */
+.aligned .vCheckboxLabel,
+.aligned label:has(> input[type="checkbox"]),
+.aligned label:has(> input[type="radio"]) {
+    width: auto;
+    min-width: 0;
+}
+
+/* Test powiadomień: szeroka tabela zdarzeń przewija się w swoim module, nie cała strona (telefon). */
+.notification-test-form .module {
+    overflow-x: auto;
+}
+
+/* Link usuwania (np. „Usuń tekst razem z etapami…”) w ciemnym motywie: jaśniejsza czerwień, czytelna na tle. */
+html[data-theme="dark"] a.deletelink {
+    color: var(--cms-error);
 }

@@ -5,7 +5,8 @@
 <p><strong>Udany test nie oznacza, że wiadomości wychodzą przy zwykłych zdarzeniach w CMS-ie</strong> – wychodzą tylko z powiadomień włączonych, z kanałem i treścią (kolumna „Stan”). Stan wszystkich reguł i ostatnie wysyłki pokazuje też komenda serwera <code>python manage.py discord_diagnose</code>.</p>
 <p class="help">{{ tags_help }}</p>
 <form method="post" class="notification-test-form">{% csrf_token %}
-<div class="module"><table class="notification-test-data">{{ form.as_table }}</table></div>
+<div class="module"><table class="notification-test-data">{% for field in form.visible_fields %}{% if field.name != 'mark_test' %}<tr><th>{{ field.label_tag }}</th><td>{{ field.errors }}{{ field }}{% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}</td></tr>{% endif %}{% endfor %}</table>
+<div class="cms-admin-check">{{ form.mark_test.errors }}<label for="{{ form.mark_test.id_for_label }}">{{ form.mark_test }}<span>{{ form.mark_test.label }}</span></label></div></div>
 <div class="module">
 <table class="cms-full-table">
 <thead><tr><th>Zdarzenie</th><th>Kanał</th><th>Oznaczenie</th><th>Treści</th><th>Stan</th><th></th></tr></thead>
