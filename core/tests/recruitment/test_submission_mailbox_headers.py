@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from core.admin import MailboxConnectionForm
 from authors.models import BlacklistEntry
-from core.models import MailboxConnection, MailboxDownload, MailboxHeaderSnapshot
+from core.models import MailboxConnection, MailboxDownload, MailboxHeaderSnapshot, MailboxIgnoredMessage
 from core.services.mailbox import MailboxError
 from core.services.mailbox_import import default_mailbox, mailbox_key, parse_message
 from core.views.mailbox import HEADERS_SESSION_KEY, load_token
@@ -97,16 +97,23 @@ class SubmissionHeadersTests(SubmissionMailboxMixin, TestCase):
 
     @patch('core.views.mailbox.read_headers')
     def test_default_box_and_filtered_headers(self, read):
+        """Domyślnie nagłówki bez pobranych (UID 12) i ignorowanych (UID 13); każdą grupę można pokazać."""
         MailboxDownload.objects.create(mailbox_key=mailbox_key(self.box), uid_validity=7, uid=12)
+        MailboxIgnoredMessage.objects.create(mailbox_key=mailbox_key(self.box), uid_validity=7, uid=13)
+        MailboxIgnoredMessage.objects.create(mailbox_key='inna-skrzynka', uid_validity=7, uid=14)
         read.return_value = {'rows': [], 'validity': 7, 'total': 0}
         response = self.client.get(self.url)
         read.assert_not_called()
         self.assertNotContains(response, 'name="mailbox"')
         self.assertContains(response, 'name="clean" checked')
-        self.client.post(self.url, {'action': 'headers'})
-        self.assertEqual(list(read.call_args.kwargs['excluded'](7)), [12])
-        self.client.post(self.url, {'action': 'headers', 'show_downloaded': 'on'})
-        self.assertIsNone(read.call_args.kwargs['excluded'])
+        self.assertContains(response, 'name="show_ignored"')
+        for options, expected in (({}, {12, 13}), ({'show_downloaded': 'on'}, {13}), ({'show_ignored': 'on'}, {12}),
+                                  ({'show_downloaded': 'on', 'show_ignored': 'on'}, None)):
+            with self.subTest(options=options):
+                self.client.post(self.url, {'action': 'headers', **options})
+                excluded = read.call_args.kwargs['excluded']
+                self.assertEqual(excluded and excluded(7), expected)
+                self.assertEqual(self.client.session[HEADERS_SESSION_KEY]['show_ignored'], 'show_ignored' in options)
 
     def test_ambiguous_box(self):
         MailboxConnection.objects.create(name='TEKSTY', host='imap.example.com', username='other',
@@ -131,7 +138,11 @@ class SubmissionHeadersTests(SubmissionMailboxMixin, TestCase):
         token = response.context['selection']
         response = self.client.post(self.url, {'action': 'copy_emails', 'show_downloaded': 'on', 'selection': token})
         self.assertEqual(response.json(), {'emails': ['b@example.test']})
-        self.assertIsNone(copy.call_args.kwargs['excluded'])
+        self.assertEqual(copy.call_args.kwargs['excluded'](7), set())
+        # Lista pobrana bez ignorowanych – kopiowanie z „Pokaż ignorowane” wymaga ponownego pobrania nagłówków.
+        response = self.client.post(self.url, {'action': 'copy_emails', 'show_downloaded': 'on', 'show_ignored': 'on',
+                                               'selection': token})
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(copy.call_args.kwargs['subject_filter'], '')
         self.assertFalse(MailboxDownload.objects.exists())
 
@@ -142,7 +153,7 @@ class SubmissionHeadersTests(SubmissionMailboxMixin, TestCase):
             response = self.client.post(self.url, {'action': 'headers', 'cursor': cursor, 'show_downloaded': 'on'})
         self.assertEqual(response.status_code, 302)
         self.assertIsNone(read.call_args.args[1])
-        self.assertIsNone(read.call_args.kwargs['excluded'])
+        self.assertEqual(read.call_args.kwargs['excluded'](7), set())
 
 
 

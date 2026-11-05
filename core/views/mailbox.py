@@ -19,17 +19,19 @@ from core.models import MailboxConnection, MailboxDownload
 from core.permissions import superuser_required
 from core.services.mailbox import read_headers, MailboxError
 from core.services.mailbox_import import (
-    default_mailbox, downloaded_uids, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages,
+    default_mailbox, downloaded_uids, excluded_uids, ignored_uids, mailbox_key, receipts, set_ignored, fetch_messages,
+    prepare_forms, package_messages,
     describe_import_error, filter_valid_messages, MAX_MESSAGES, BLACKLIST_CHOICES, DOWNLOAD_FILE, FUTURE_REJECTION,
     blacklisted_addresses, mark_blacklisted, sender_address,
 )
 from core.services.document_converter import ConversionError
 from core.services.recruitment_samples import parse_sample
 from core.services.reviews import import_reviews
-from core.views.mailbox_common import copied_emails, load_signed, preview_data, signed, stored_headers, with_senders
+from core.views.mailbox_common import (IGNORED_MESSAGES, copied_emails, load_signed, preview_data, signed, stored_headers,
+                                      with_senders)
 
 HEADERS_SESSION_KEY = 'mailbox_headers_snapshot'
-IMPORT_OPTIONS = ('show_downloaded', 'clean', 'rebuild', 'convert', 'subject_filter')
+IMPORT_OPTIONS = ('show_downloaded', 'show_ignored', 'clean', 'rebuild', 'convert', 'subject_filter')
 # Ciasteczko z tokenem formularza: skrypt strony chowa pasek postępu, gdy przeglądarka dostanie ZIP.
 DOWNLOAD_COOKIE = 'mailbox_import_done'
 EXPIRED = 'Podgląd wygasł lub ustawienia skrzynki się zmieniły. Pobierz nagłówki ponownie.'
@@ -54,30 +56,56 @@ def restore_headers(request, config, key, context, saved):
     if not saved:
         return
     result = deepcopy(saved['result'])
+    # Wiadomości oznaczone jako ignorowane po pobraniu listy znikają z niej (chyba że lista je pokazuje).
+    ignored = set(ignored_uids(config)(result['validity']).filter(uid__in=[row['uid'] for row in result['rows']]))
+    if not saved.get('show_ignored'):
+        result['total'] -= sum(row['uid'] in ignored for row in result['rows'])
+        result['rows'] = [row for row in result['rows'] if row['uid'] not in ignored]
     uids = [row['uid'] for row in result['rows']]
     already = set(receipts(config, result['validity']).filter(uid__in=uids).values_list('uid', flat=True))
     blacklisted = blacklisted_addresses(row.get('sender') for row in result['rows'])
     for row in result['rows']:
         row['downloaded'] = row['uid'] in already
+        row['ignored'] = row['uid'] in ignored
         row['blacklisted'] = sender_address(row.get('sender')) in blacklisted
         row['blacklist_choice'] = context['blacklist_selected'].get(row['uid'], FUTURE_REJECTION)
     base = {'user': request.user.pk, 'mailbox': key, 'subject_filter': saved['subject_filter'],
-            'sent_since': saved['sent_since'], 'show_downloaded': saved['show_downloaded']}
+            'sent_since': saved['sent_since'], 'show_downloaded': saved['show_downloaded'],
+            'show_ignored': saved.get('show_ignored', False)}
     for field in ('next_cursor', 'previous_cursor'):
         if result.get(field):
             result[field] = signed(dict(base, cursor=result[field]), 'mailbox-cursor')
     context['result'] = result
+    context['ignored_shown'] = any(row['ignored'] for row in result['rows'])
     # Renew signatures from trusted session data without refetching the mailbox.
     context['selection'] = signed(dict(base, validity=result['validity'], uids=uids), 'mailbox-selection')
     if request.method == 'GET':
-        context.update({name: saved[name] for name in IMPORT_OPTIONS})
+        context.update({name: saved.get(name, False) for name in IMPORT_OPTIONS})
         context['date_form'] = MailboxDateForm(initial=saved['date_filter'])
 
 
 def _same_filters(payload, context, sent_since, *, show=True):
-    """Podpisany wybór lub kursor dotyczy bieżącego naboru i daty (z `show` – także pokazywania pobranych)."""
+    """Podpisany wybór lub kursor dotyczy bieżącego naboru i daty (z `show` – także pokazywania pobranych
+    i ignorowanych)."""
     return (payload.get('sent_since', '') == sent_since and payload.get('subject_filter', '') == context['subject_filter']
-            and (not show or payload.get('show_downloaded', False) == context['show_downloaded']))
+            and (not show or all(payload.get(name, False) == context[name] for name in ('show_downloaded', 'show_ignored'))))
+
+
+def _excluded(config, context):
+    """Pomijane przy pobieraniu nagłówków: już pobrane i ignorowane (o ile filtry ich nie pokazują)."""
+    return excluded_uids(None if context['show_downloaded'] else downloaded_uids(config),
+                         None if context['show_ignored'] else ignored_uids(config))
+
+
+def _selected_uids(request, selection):
+    """Zaznaczone wiadomości – tylko z podpisanej listy."""
+    try:
+        selected = sorted(set(int(value) for value in request.POST.getlist('uids')))
+    except ValueError:
+        raise MailboxError('Nieprawidłowy wybór wiadomości.') from None
+    if not selected or not set(selected).issubset(selection['uids']):
+        raise MailboxError('Wybierz wiadomości z pobranej listy.')
+    return selected
 
 
 def _headers(request, action, config, key, context, sent_since):
@@ -87,8 +115,7 @@ def _headers(request, action, config, key, context, sent_since):
         page = load_token(request.POST['cursor'], request.user, key, 'mailbox-cursor')
         if _same_filters(page, context, sent_since):
             cursor = page['cursor']
-    result = read_headers(config, cursor, excluded=None if context['show_downloaded'] else downloaded_uids(config),
-                          subject_filter=context['subject_filter'], sent_since=sent_since)
+    result = read_headers(config, cursor, excluded=_excluded(config, context), subject_filter=context['subject_filter'], sent_since=sent_since)
     request.session[HEADERS_SESSION_KEY] = dict(
         user=request.user.pk, mailbox=key, sent_since=sent_since, result=result,
         date_filter=context['date_form'].snapshot(), fetched_at=timezone.now().isoformat(),
@@ -120,9 +147,19 @@ def _copy_emails(request, action, config, key, context, sent_since):
     selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
     if not _same_filters(selection, context, sent_since):
         raise MailboxError('Zmieniono filtry. Pobierz nagłówki ponownie.')
-    return copied_emails(config, selection['validity'],
-                         excluded=None if context['show_downloaded'] else downloaded_uids(config),
+    return copied_emails(config, selection['validity'], excluded=_excluded(config, context),
                          subject_filter=context['subject_filter'], sent_since=sent_since)
+
+
+def _ignore(request, action, config, key, context, sent_since):
+    """Zaznaczone wiadomości jako ignorowane (albo przywrócone) – bez łączenia ze skrzynką; zostają w niej."""
+    selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
+    selected = _selected_uids(request, selection)
+    rows = {row['uid']: row for row in (context.get('result') or {}).get('rows', [])}
+    set_ignored(config, selection['validity'], [rows.get(uid, {'uid': uid}) for uid in selected], request.user,
+                action == 'ignore')
+    notifications.success(request, IGNORED_MESSAGES[action].format(len(selected)))
+    return redirect(request.path)
 
 
 def _download(request, action, config, key, context, sent_since):
@@ -130,12 +167,7 @@ def _download(request, action, config, key, context, sent_since):
     selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
     if not _same_filters(selection, context, sent_since, show=False):
         raise MailboxError('Zmieniono nabór lub datę. Najpierw pobierz nagłówki ponownie.')
-    try:
-        selected = sorted(set(int(value) for value in request.POST.getlist('uids')))
-    except ValueError:
-        raise MailboxError('Nieprawidłowy wybór wiadomości.') from None
-    if not selected or not set(selected).issubset(selection['uids']):
-        raise MailboxError('Wybierz wiadomości z pobranej listy.')
+    selected = _selected_uids(request, selection)
     validity = selection['validity']
     skipped_errors = []
     messages = fetch_messages(config, validity, selected, skipped_errors)
@@ -235,7 +267,7 @@ def _save(request, config, key, validity, messages, tokens, context, archive):
 
 
 ACTIONS = {'headers': _headers, 'preview': _preview, 'preview_html': _preview, 'copy_emails': _copy_emails,
-           'download': _download, 'confirm': _download}
+           'download': _download, 'confirm': _download, 'ignore': _ignore, 'unignore': _ignore}
 
 
 @never_cache
@@ -248,14 +280,15 @@ def mailbox_headers(request):
     action = 'preview_html' if request.POST.get('preview_uid') else request.POST.get('action', 'headers')
     date_form = MailboxDateForm(request.POST if post else None)
     context = {'date_form': date_form, 'result': None, 'max_messages': MAX_MESSAGES, 'show_downloaded': request.POST.get('show_downloaded') == 'on',
+               'show_ignored': request.POST.get('show_ignored') == 'on',
                **{name: request.POST.get(name) == 'on' if post else True for name in ('clean', 'rebuild', 'convert')},
                'blacklist_options': BLACKLIST_CHOICES, 'blacklist_selected': blacklist_choices(request)}
     try:
         config = default_mailbox()
         key = mailbox_key(config)
         context.update(mailbox=config, subject_choices=config.subject_choices())
-        saved, notice = stored_headers(request, HEADERS_SESSION_KEY, config, key, show_downloaded=False, clean=True,
-                                       rebuild=True, convert=True, subject_filter='')
+        saved, notice = stored_headers(request, HEADERS_SESSION_KEY, config, key, show_downloaded=False, show_ignored=False,
+                                       clean=True, rebuild=True, convert=True, subject_filter='')
         context.update(notice)
         restore_headers(request, config, key, context, saved)
         context['subject_filter'] = request.POST.get('subject_filter', '') if post else context.get('subject_filter', '')

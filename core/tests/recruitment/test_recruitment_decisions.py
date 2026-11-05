@@ -7,7 +7,8 @@ from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
-from core.models import Recruitment, RecruitmentMailSource
+from core.models import Recruitment, RecruitmentMailSource, RecruitmentRoleDecision
+from core.account_identity import person_name
 from core.selectors.recruitment import pending_by_role
 from core.services.recruitment_decisions import set_all_decisions
 from core.views.recruitment_delete import deletion_token
@@ -172,28 +173,42 @@ class RoleDecisionTests(RecruitmentTeamMixin, TestCase):
         url = reverse('core:recruitment_list')
         self.assertEqual(self.client.get(url, {'role': 'sound'}).context['page_obj'].paginator.count, 0)
 
-    def test_reason_author_changes_only_when_reason_changes_and_download_is_shown(self):
+    def test_reason_and_notes_authors_change_only_with_their_text_and_download_is_shown(self):
+        """Autor i data uzasadnienia oraz nieoficjalnych notatek zmieniają się tylko przy zmianie danego tekstu
+        i są pokazane pod formularzem roli; wcześniejszy tekst bez autora ma osobny opis."""
         record = Recruitment.objects.create(mail_roles=['editors', 'verifiers'])
         RecruitmentMailSource.objects.create(recruitment=record, mailbox_key='key', uid=1, uid_validity=1,
                                              downloaded_at=timezone.now())
         url = reverse('core:recruitment_detail', args=[record.pk])
         self.assertContains(self.client.get(url), 'Załączniki pobrane:')
-        reason = record.role_decisions.get(role='editors')
-        data = {'role': 'editors', 'version': reason.updated_at.isoformat(), 'editors-status': 'accepted',
-                'editors-decision_reason': 'Dobre próbki', 'editors-unofficial_notes': ''}
-        self.assertEqual(self.client.post(url, data).status_code, 302)
-        reason.refresh_from_db()
-        self.assertEqual(reason.reason_author, self.coordinator)
-        self.client.force_login(self.recruiter)
-        data.update(version=reason.updated_at.isoformat(), **{'editors-unofficial_notes': 'Tylko notatka'})
-        self.assertEqual(self.client.post(url, data).status_code, 302)
-        reason.refresh_from_db()
-        self.assertEqual(reason.reason_author, self.coordinator)
-        data.update(version=reason.updated_at.isoformat(), **{'editors-decision_reason': 'Nowe uzasadnienie'})
-        self.assertEqual(self.client.post(url, data).status_code, 302)
-        reason.refresh_from_db()
-        self.assertEqual(reason.reason_author, self.recruiter)
-        self.assertIsNone(record.role_decisions.get(role='verifiers').reason_author)
+        decision = record.role_decisions.get(role='editors')
+        data = {'role': 'editors', 'editors-status': 'accepted', 'editors-decision_reason': '',
+                'editors-unofficial_notes': ''}
+        coordinator, recruiter = person_name(self.coordinator), person_name(self.recruiter)
+        for user, reason, notes, expected in (
+            (self.coordinator, 'Dobre próbki', '', (coordinator, '')),
+            (self.recruiter, 'Dobre próbki', 'Tylko notatka', (coordinator, recruiter)),
+            (self.coordinator, 'Dobre próbki', 'Tylko notatka', (coordinator, recruiter)),
+            (self.recruiter, 'Nowe uzasadnienie', 'Tylko notatka', (recruiter, recruiter)),
+            (self.coordinator, 'Nowe uzasadnienie', 'Poprawiona notatka', (recruiter, coordinator)),
+        ):
+            with self.subTest(reason=reason, notes=notes):
+                self.client.force_login(user)
+                data.update({'version': decision.updated_at.isoformat(), 'editors-decision_reason': reason,
+                             'editors-unofficial_notes': notes})
+                self.assertEqual(self.client.post(url, data).status_code, 302)
+                decision.refresh_from_db()
+                self.assertEqual((decision.reason_author_name, decision.notes_author_name), expected)
+                self.assertEqual(decision.notes_author is None, not expected[1])
+                self.assertEqual(decision.notes_updated_at is None, not expected[1])
+        page = self.client.get(url)
+        self.assertContains(page, f'Uzasadnienie: {recruiter} · ')
+        self.assertContains(page, f'Nieoficjalne notatki: {coordinator} · ')
+        other = record.role_decisions.get(role='verifiers')
+        self.assertIsNone(other.reason_author)
+        self.assertIsNone(other.notes_author)
+        RecruitmentRoleDecision.objects.filter(pk=other.pk).update(unofficial_notes='Sprzed zmiany')
+        self.assertContains(self.client.get(url), 'Autor wcześniejszych notatek: brak zapisanej informacji.')
 
     def test_admin_exposes_role_decisions_link_and_preserves_legacy_fields_readonly(self):
         self.client.force_login(self.admin)

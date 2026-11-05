@@ -14,8 +14,9 @@
     <section class="panel is-muted recruitment-role-panel" aria-label="Wybór roli">
         <fieldset class="filter-field recruitment-mail-roles" data-recruitment-roles><legend class="form-label">{{ form.roles.label }}</legend>
             <div class="recruitment-role-options">{% for checkbox in form.roles %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}</div>
+            {% if selection %}<div class="mailbox-header-action"><button class="secondary-button" type="submit" name="action" value="filter">Filtruj według ról</button></div>{% endif %}
             {{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></fieldset>
-        <div class="recruitment-date-row"><div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label><div class="mailbox-header-action"><button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button></div></div>
+        <div class="recruitment-date-row"><div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label><label class="mailbox-option">{{ form.show_ignored }}<span>{{ form.show_ignored.label }}</span></label><div class="mailbox-header-action"><button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button></div></div>
 {% include "core/includes/mailbox_date.html" %}</div>
     </section>
     <section class="panel is-muted recruitment-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
@@ -25,13 +26,15 @@
 </div>
 {% if selection %}
 <input type="hidden" name="selection" value="{{ selection }}">
-<p>Dopasowane wiadomości: {{ total }}. Maksymalnie {{ max_samples }} wiadomości jednocześnie.</p>
+<p>Dopasowane wiadomości: {{ total }}, pobrane: {{ fetched }}{% if filter_roles %}, w wybranych rolach ({{ filter_roles|join:", " }}): {{ rows|length }}{% endif %}. Maksymalnie {{ max_samples }} wiadomości jednocześnie.</p>
 <div class="two-columns recruitment-operations-grid"><section class="panel sample-download-panel" aria-label="Pobranie załączników i dodanie do bazy"><h2>Pobieranie i zapis</h2>
 <div class="actions recruitment-actions recruitment-sample-actions">
 <button class="primary-button" name="action" value="download">Pobranie załączników</button>
 <button class="secondary-button" name="action" value="add">Dodanie do bazy</button>
+<button class="secondary-button" name="action" value="ignore">Ignoruj zaznaczone</button>
+{% if ignored_shown %}<button class="secondary-button" name="action" value="unignore">Przywróć zaznaczone</button>{% endif %}
 </div>
-<p class="muted-text">Oba działania zapisują zgłoszenia w Rekrutacji. Ponowny zapis nie tworzy duplikatów.</p>
+<p class="muted-text">Pobranie i dodanie zapisują zgłoszenia w Rekrutacji. Ponowny zapis nie tworzy duplikatów. Ignorowane wiadomości zostają w skrzynce, ale nie pojawiają się przy kolejnym pobieraniu nagłówków.</p>
 </section><section class="panel sample-edit-panel" aria-label="Edycja zaznaczonych zgłoszeń"><fieldset class="panel recruitment-bulk"><legend>Edycja zaznaczonych zgłoszeń</legend>
 <label>Przyjęty/Odrzucony {{ bulk_form.decision }}{{ bulk_form.decision.errors }}</label>
 <label>Powiadomiony {{ bulk_form.notified }}{{ bulk_form.notified.errors }}</label>
@@ -40,14 +43,14 @@
 </fieldset>
 <p class="muted-text">Zmiana decyzji obejmuje wszystkie role zaznaczonych zgłoszeń; zachowuje ich uzasadnienia i notatki. Pole Powiadomiony zapisuje informację; nie wysyła wiadomości.</p>
 </section></div>
-<div class="table-container"><table class="recruitment-samples-table" data-copy-table data-pagination="off" data-email-mailbox="true">
+<div class="table-container"><table class="recruitment-samples-table" data-copy-table data-email-mailbox="true">
 <thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Przyjęty/Odrzucony</th><th>Powiadomiony</th><th>Stan</th><th>Podgląd</th></tr></thead>
 <tbody>{% for row in rows %}<tr>
 <td><input type="checkbox" name="selected" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz wiadomość: {{ row.subject }}"></td>
 <td>{{ row.sender }}</td><td class="recruitment-subject"><button class="recruitment-subject-button" type="submit" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">{{ row.subject|default:"(bez tematu)" }}</button></td><td>{{ row.date }}</td>
 <td class="recruitment-decision-cell">{% include "core/includes/recruitment_decision.html" with record=row.record %}</td>
 <td data-copy-value="{{ row.record.notified|yesno:'Tak,Nie,Nie' }}" data-sort-value="{{ row.record.notified|yesno:'Tak,Nie,Nie' }}">{% include "core/includes/recruitment_notified.html" with record=row.record mail_uid=row.uid user=user only %}</td>
-<td data-recruitment-stored>{% if row.record %}W bazie{% elif row.downloaded %}Pobrano{% else %}Nowa{% endif %}</td>
+<td><span data-recruitment-stored>{% if row.record %}W bazie{% elif row.downloaded %}Pobrano{% else %}Nowa{% endif %}</span>{% if row.ignored %} <span class="badge mailbox-ignored-badge">Ignorowana</span>{% endif %}</td>
 <td data-recruitment-record>{% if row.record %}<a class="secondary-button" href="{% url 'core:recruitment_detail' row.record.pk %}">Podgląd</a>{% else %}<span class="muted-text">Najpierw dodaj do bazy</span>{% endif %}</td>
 </tr>{% empty %}<tr><td colspan="8">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
 </table></div>

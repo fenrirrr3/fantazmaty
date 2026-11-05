@@ -14,7 +14,7 @@ from lxml.etree import ParserError, XMLSyntaxError
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import Q
-from core.models import MailboxConnection, MailboxDownload
+from core.models import MailboxConnection, MailboxDownload, MailboxIgnoredMessage
 from core.forms import ReviewBulkImportForm
 from core.odkurzacz_forms import validate_docx_upload
 from core.services.mailbox import MailboxError, active_mailbox, imap_folder, story_title, _positive
@@ -113,6 +113,32 @@ def receipts(config, validity):
 def downloaded_uids(config):
     """Do `excluded` w read_headers: UID-y wiadomości tej skrzynki już pobranych (w danym UIDVALIDITY)."""
     return lambda validity: receipts(config, validity).values_list('uid', flat=True)
+
+
+def ignored_uids(config):
+    """Do `excluded` w read_headers: UID-y wiadomości tej skrzynki oznaczonych jako ignorowane."""
+    return lambda validity: MailboxIgnoredMessage.objects.filter(
+        mailbox_key=mailbox_key(config), uid_validity=validity).values_list('uid', flat=True)
+
+
+def excluded_uids(*sources):
+    """Do `excluded` w read_headers: suma UID-ów z podanych źródeł (funkcji UIDVALIDITY → UID-y); bez źródeł None."""
+    sources = [source for source in sources if source]
+    if not sources:
+        return None
+    return lambda validity: set().union(*(set(source(validity)) for source in sources))
+
+
+def set_ignored(config, validity, rows, user, ignore):
+    """Oznaczenie wiadomości (wiersze nagłówków: uid, nadawca, temat) jako ignorowane albo jego cofnięcie."""
+    key = mailbox_key(config)
+    if not ignore:
+        MailboxIgnoredMessage.objects.filter(mailbox_key=key, uid_validity=validity,
+                                             uid__in=[row['uid'] for row in rows]).delete()
+        return
+    MailboxIgnoredMessage.objects.bulk_create([MailboxIgnoredMessage(
+        mailbox_key=key, uid_validity=validity, uid=row['uid'], sender=(row.get('sender') or '')[:2000],
+        subject=(row.get('subject') or '')[:2000], ignored_by=user) for row in rows], ignore_conflicts=True)
 
 
 def message_label(message):

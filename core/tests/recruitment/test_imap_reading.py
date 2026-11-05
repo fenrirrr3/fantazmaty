@@ -122,6 +122,9 @@ class HeaderReadingTests(TestCase):
             copied = sender_emails(box, 7, recruitment_roles=['proofreaders'])
             self.assertEqual(set(copied), {f'person{n}@example.test' for n in subjects if n % 2})
             self.assertEqual(read_headers(box, recruitment_roles=[])['total'], 240)
+            # Próbki pobierają większą stronę (filtr ról działa potem na pobranej liście).
+            large = read_headers(box, recruitment_roles=[], page_size=200)
+            self.assertEqual((len(large['rows']), large['rows'][0]['uid'], large['next_cursor']['boundary']), (200, 240, 41))
             union = read_headers(box, recruitment_roles=['proofreaders', 'audio_proofreaders'])
             self.assertEqual(union['total'], 180)
             excluded = read_headers(box, recruitment_roles=['proofreaders'], excluded=lambda validity: {1, 3})

@@ -154,7 +154,7 @@ class RecruitmentMailboxMixin:
         self.client.get(self.url)
 
     def payload(self, action='add', uids=(12,), **extra):
-        token = signing.dumps(dict(user=self.user.pk, mailbox=mailbox_key(self.box), roles=[], show=False,
+        token = signing.dumps(dict(user=self.user.pk, mailbox=mailbox_key(self.box), show=False, show_ignored=False,
                                    sent_since='2026-10-02', kind='selection', validity=7, uids=list(uids)),
                               salt=RECRUITMENT_SALT)
         return {'action': action, 'date_filter_enabled': 'on', 'sent_since': '2026-10-02', 'roles': ['all'],

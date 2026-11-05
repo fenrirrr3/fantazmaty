@@ -6,8 +6,9 @@ from django.utils.dateparse import parse_datetime
 
 from core.mailbox_date import DEFAULT_SENT_SINCE
 from core.models import MailboxConnection, MailboxHeaderSnapshot, RecruitmentMailSource
-from core.services.mailbox import MailboxError, active_mailbox, read_headers
-from core.services.mailbox_import import default_mailbox, downloaded_uids, mailbox_key, receipts
+from core.services.mailbox import RECRUITMENT_PAGE_SIZE, MailboxError, active_mailbox, read_headers
+from core.services.mailbox_import import (default_mailbox, downloaded_uids, excluded_uids, ignored_uids, mailbox_key,
+                                         receipts)
 
 logger = logging.getLogger(__name__)
 UNEXPECTED_ERROR = 'Nieoczekiwany błąd podczas pobierania nagłówków. Szczegóły są w logu zadania.'
@@ -24,14 +25,16 @@ def imported_uids(config, validity):
 
 
 def _submission_headers(config, sent_since):
-    """Jak domyślny przycisk na ekranie zgłoszeń: bez naboru, bez już pobranych."""
-    return read_headers(config, excluded=downloaded_uids(config), sent_since=sent_since)
+    """Jak domyślny przycisk na ekranie zgłoszeń: bez naboru, bez już pobranych i ignorowanych."""
+    return read_headers(config, excluded=excluded_uids(downloaded_uids(config), ignored_uids(config)),
+                        sent_since=sent_since)
 
 
 def _recruitment_headers(config, sent_since):
-    """Jak domyślny przycisk na ekranie próbek: wszystkie role, bez pobranych i dodanych do bazy."""
-    return read_headers(config, excluded=lambda validity: imported_uids(config, validity),
-                        recruitment_roles=[], sent_since=sent_since)
+    """Jak domyślny przycisk na ekranie próbek: wszystkie role, bez pobranych, dodanych do bazy i ignorowanych."""
+    return read_headers(config, excluded=excluded_uids(lambda validity: imported_uids(config, validity),
+                                                       ignored_uids(config)),
+                        recruitment_roles=[], sent_since=sent_since, page_size=RECRUITMENT_PAGE_SIZE)
 
 
 MAILBOXES = (('Zgłoszenia', default_mailbox, _submission_headers),

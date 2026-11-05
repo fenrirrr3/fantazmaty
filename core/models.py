@@ -184,6 +184,10 @@ class RecruitmentRoleDecision(models.Model):
         on_delete=models.SET_NULL, related_name='recruitment_reasons', verbose_name='autor uzasadnienia')
     reason_author_name = models.CharField('podpis autora uzasadnienia', max_length=255, blank=True)
     reason_updated_at = models.DateTimeField('data zmiany uzasadnienia', null=True, blank=True)
+    notes_author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='recruitment_notes', verbose_name='autor nieoficjalnych notatek')
+    notes_author_name = models.CharField('podpis autora nieoficjalnych notatek', max_length=255, blank=True)
+    notes_updated_at = models.DateTimeField('data zmiany nieoficjalnych notatek', null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -387,6 +391,26 @@ class MailboxDownload(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=('mailbox_key', 'uid_validity', 'uid'), name='unique_mailbox_download')]
+
+
+class MailboxIgnoredMessage(models.Model):
+    """Wiadomość oznaczona jako ignorowana: domyślnie pomijana przy pobieraniu nagłówków (zostaje w skrzynce)."""
+    mailbox_key = models.CharField('klucz skrzynki', max_length=64)
+    uid_validity = models.PositiveBigIntegerField('UIDVALIDITY folderu')
+    uid = models.PositiveBigIntegerField('UID wiadomości')
+    sender = models.CharField('nadawca', max_length=2000, blank=True)
+    subject = models.CharField('temat', max_length=2000, blank=True)
+    ignored_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+', verbose_name='oznaczył(a)')
+    ignored_at = models.DateTimeField('data oznaczenia', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'ignorowana wiadomość'
+        verbose_name_plural = 'ignorowane wiadomości'
+        constraints = [models.UniqueConstraint(fields=('mailbox_key', 'uid_validity', 'uid'), name='unique_mailbox_ignored')]
+
+    def __str__(self):
+        return self.subject or self.sender or f'UID {self.uid}'
 
 
 class RecruitmentMailSource(models.Model):

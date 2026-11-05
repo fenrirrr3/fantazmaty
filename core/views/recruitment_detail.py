@@ -52,13 +52,17 @@ def recruitment_detail(request, pk):
                         form.add_error(None, 'Decyzja dla tej roli zmieniła się w międzyczasie. Skopiuj wpisane dane i odśwież formularz.')
                         status = 409
                     else:
-                        if current.decision_reason != form.cleaned_data['decision_reason']:
-                            current.reason_author = request.user
-                            current.reason_author_name = person_name(request.user)[:255]
-                            current.reason_updated_at = timezone.now()
+                        # Autor i data zmieniają się tylko przy zmianie danego tekstu (uzasadnienia albo notatek).
+                        signatures = []
+                        for field, prefix in (('decision_reason', 'reason'), ('unofficial_notes', 'notes')):
+                            if getattr(current, field) != form.cleaned_data[field]:
+                                setattr(current, f'{prefix}_author', request.user)
+                                setattr(current, f'{prefix}_author_name', person_name(request.user)[:255])
+                                setattr(current, f'{prefix}_updated_at', timezone.now())
+                                signatures += [f'{prefix}_author', f'{prefix}_author_name', f'{prefix}_updated_at']
                         for field in form.Meta.fields:
                             setattr(current, field, form.cleaned_data[field])
-                        current.save(update_fields=[*form.Meta.fields, 'updated_at', 'reason_author', 'reason_author_name', 'reason_updated_at'])
+                        current.save(update_fields=[*form.Meta.fields, 'updated_at', *signatures])
                         parent.save(update_fields=['updated_at'])
                         messages.success(request, f'Zapisano decyzję dla roli: {label}. Nie wysłano powiadomienia.')
                         return redirect('core:recruitment_detail', pk=pk)

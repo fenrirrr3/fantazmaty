@@ -300,6 +300,12 @@
     overflow-wrap: anywhere;
 }
 
+/* Oznaczenie „Ignorowana” przy stanie wiadomości – jedno słowo, bez łamania w wąskiej kolumnie. */
+.mailbox-ignored-badge {
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
 .recruitment-samples-table .recruitment-subject {
     min-width: var(--cell-min-width);
     max-width: 25rem;

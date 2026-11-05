@@ -13,6 +13,11 @@ from core.services.mailbox_snapshots import automatic_notice, newer_snapshot
 
 PREVIEW_LIMIT = 100000
 TOKEN_AGE = 3600
+IGNORED_MESSAGES = {
+    'ignore': 'Oznaczono jako ignorowane: {}. Wiadomości zostają w skrzynce, ale nie pojawią się przy kolejnym '
+              'pobieraniu nagłówków (chyba że zaznaczysz „Pokaż również ignorowane”).',
+    'unignore': 'Przywrócono wiadomości: {}. Znowu będą pobierane z nagłówkami.'}
+"""Komunikaty po oznaczeniu zaznaczonych wiadomości jako ignorowane i po ich przywróceniu."""
 
 
 def stored_headers(request, session_key, config, key, **defaults):

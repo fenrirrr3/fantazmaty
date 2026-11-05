@@ -16,6 +16,8 @@ from cryptography.fernet import InvalidToken
 from core.models import MailboxConnection
 
 PAGE_SIZE = 50
+RECRUITMENT_PAGE_SIZE = 500
+"""Próbki rekrutacyjne: jedno pobranie obejmuje tyle nagłówków, a filtr ról działa na pobranej liście."""
 
 
 class MailboxError(Exception):
@@ -132,7 +134,8 @@ def imap_folder(config):
                 pass
 
 
-def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recruitment_roles=None, sent_since=""):
+def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recruitment_roles=None, sent_since="",
+                 page_size=PAGE_SIZE):
     if subject_filter and subject_filter not in config.subject_choices():
         raise MailboxError("Wybierz nabór zapisany w ustawieniach skrzynki.")
     from core.recruitment_roles import ROLE_CHOICES
@@ -205,11 +208,11 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
         newer = bool(cursor and cursor['direction'] == 'newer')
         if cursor:
             candidates = [uid for uid in uids if (uid > boundary if newer else uid < boundary)]
-        selected = candidates[:PAGE_SIZE] if newer else candidates[-PAGE_SIZE:]
+        selected = candidates[:page_size] if newer else candidates[-page_size:]
         result = {'validity': validity, 'rows': [], 'total': len(uids), 'next_cursor': None, 'previous_cursor': None}
         if not selected:
             # If this side of the cursor disappeared, return to newest remaining mail.
-            selected = uids[-PAGE_SIZE:]
+            selected = uids[-page_size:]
             if not selected:
                 return result
         def state(direction, boundary):

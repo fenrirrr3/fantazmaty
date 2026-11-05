@@ -58,7 +58,7 @@ function click(uid) {
     assert.equal(roles.options[0].checked,false); assert.equal(roles.options[1].checked,true);
     roles.options[2].checked=true; roles.events.change({target: roles.options[2]});
     assert.equal(roles.options[1].checked,true); assert.equal(roles.options[2].checked,true);
-    assert.equal(body.textContent,'');
+    assert.equal(body.textContent,'<img onerror="alert(1)">'); // Zmiana ról nie czyści podglądu (filtr działa przyciskiem).
     roles.options[0].checked=true; roles.events.change({target: roles.options[0]});
     assert.equal(roles.options[1].checked,false); assert.equal(roles.options[0].checked,true);
     roles.options[0].checked=false; roles.events.change({target: roles.options[0]});

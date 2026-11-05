@@ -17,12 +17,13 @@ from django.views.decorators.http import require_http_methods
 from core.mailbox_date import MailboxDateForm, DEFAULT_SENT_SINCE
 from core.models import Recruitment, RecruitmentMailSource, RecruitmentRoleDecision
 from core.permissions import can_copy_emails, recruitment_mailbox_required
+from core.recruitment_message import roles_in_subject
 from core.recruitment_roles import ROLE_CHOICES
-from core.services.mailbox import MailboxError, read_headers
-from core.services.mailbox_import import fetch_messages, mailbox_key, receipts
+from core.services.mailbox import RECRUITMENT_PAGE_SIZE, MailboxError, read_headers
+from core.services.mailbox_import import excluded_uids, fetch_messages, ignored_uids, mailbox_key, receipts, set_ignored
 from core.services.mailbox_snapshots import imported_uids, recruitment_connection
 from core.services.recruitment_samples import MAX_SAMPLES, attachment_archive, read_samples, store_samples
-from core.views.mailbox_common import copied_emails, load_signed, preview_data, signed, stored_headers
+from core.views.mailbox_common import IGNORED_MESSAGES, copied_emails, load_signed, preview_data, signed, stored_headers
 
 SALT = 'recruitment-mailbox-v55'
 SESSION_KEY = 'recruitment_sample_headers_v55'
@@ -32,8 +33,10 @@ MESSAGE_ACTIONS = ('preview', 'preview_html', 'download', 'add', 'bulk', 'set_no
 class RecruitmentMailboxForm(forms.Form):
     roles = forms.MultipleChoiceField(label='Rola', choices=(('all', 'Wszystkie'), *ROLE_CHOICES),
         initial=['all'], required=False, widget=forms.CheckboxSelectMultiple,
-        help_text='Zaznacz „Wszystkie” albo jedną lub kilka ról. Brak zaznaczenia oznacza Wszystkie.')
+        help_text='Zaznacz „Wszystkie” albo jedną lub kilka ról i kliknij „Filtruj według ról” – lista pobranych '
+                  'nagłówków zawęża się bez ponownego łączenia ze skrzynką. Brak zaznaczenia oznacza Wszystkie.')
     show_downloaded = forms.BooleanField(label='Pokaż również zgłoszenia już pobrane lub dodane do bazy', required=False)
+    show_ignored = forms.BooleanField(label='Pokaż również ignorowane wiadomości', required=False)
 
     def clean_roles(self):
         chosen = self.cleaned_data['roles']
@@ -84,9 +87,19 @@ def _load(token, identity, kind):
                        'Zmieniono filtry lub skrzynkę. Pobierz nagłówki od początku.')
 
 
-def _populate(context, config, identity, result):
-    """Nagłówki na stronie: stan wiadomości (w bazie, pobrana) oraz podpisany wybór i kursory stron."""
+def _populate(context, config, identity, result, roles):
+    """Nagłówki na stronie: wiadomości wybranych ról (bez ról – wszystkie), ich stan (w bazie, pobrana,
+    ignorowana) oraz podpisany wybór (tylko widoczne wiadomości) i kursory stron."""
     result = deepcopy(result)
+    # Wiadomości oznaczone jako ignorowane po pobraniu listy znikają z niej (chyba że lista je pokazuje).
+    ignored = set(ignored_uids(config)(result['validity']).filter(uid__in=[row['uid'] for row in result['rows']]))
+    if not identity['show_ignored']:
+        result['total'] -= sum(row['uid'] in ignored for row in result['rows'])
+        result['rows'] = [row for row in result['rows'] if row['uid'] not in ignored]
+    context['fetched'] = len(result['rows'])
+    if roles:
+        result['rows'] = [row for row in result['rows'] if set(roles).intersection(roles_in_subject(row['subject']))]
+    context['filter_roles'] = [label for key, label in ROLE_CHOICES if key in roles]
     uids = [row['uid'] for row in result['rows']]
     known = {source.uid: source for source in RecruitmentMailSource.objects.filter(
         mailbox_key=identity['mailbox'], uid_validity=result['validity'], uid__in=uids).select_related('recruitment').prefetch_related('recruitment__role_decisions')}
@@ -94,25 +107,52 @@ def _populate(context, config, identity, result):
     for row in result['rows']:
         source = known.get(row['uid'])
         row['downloaded'] = row['uid'] in downloaded
+        row['ignored'] = row['uid'] in ignored
         row['record'] = source.recruitment if source else None
     context.update(result)
+    context['ignored_shown'] = any(row['ignored'] for row in result['rows'])
     context['selection'] = signed({**identity, 'kind': 'selection', 'validity': result['validity'], 'uids': uids}, SALT)
     for name in ('next_cursor', 'previous_cursor'):
         context[name] = signed({**identity, 'kind': 'cursor', 'cursor': result[name]}, SALT) if result[name] else ''
 
 
-def _headers(request, context, config, identity, excluded):
-    """Strona nagłówków (pierwsza albo wskazana kursorem) zapisana w sesji."""
+def _headers(request, context, config, identity, excluded, roles):
+    """Strona nagłówków (pierwsza albo wskazana kursorem) wszystkich ról zapisana w sesji z filtrem ról."""
     cursor = _load(request.POST['cursor'], identity, 'cursor')['cursor'] if request.POST.get('cursor') else None
-    result = read_headers(config, cursor, excluded=excluded, recruitment_roles=identity['roles'],
-                          sent_since=identity['sent_since'])
-    request.session[SESSION_KEY] = {**identity, 'result': result, 'fetched_at': timezone.now().isoformat(),
+    result = read_headers(config, cursor, excluded=excluded, recruitment_roles=[], sent_since=identity['sent_since'],
+                          page_size=RECRUITMENT_PAGE_SIZE)
+    request.session[SESSION_KEY] = {**identity, 'filter_roles': roles, 'result': result,
+        'fetched_at': timezone.now().isoformat(),
         'date_filter': context['date_form'].snapshot() if request.method == 'POST'
         else {'date_filter_enabled': True, 'sent_since': identity['sent_since']}}
     if request.method == 'POST':
         return redirect(request.path)
-    _populate(context, config, identity, result)
+    _populate(context, config, identity, result, roles)
     return render(request, 'core/recruitment_mailbox.html', context)
+
+
+def _filter(request, saved, roles):
+    """Filtr ról zapisany przy pobranych nagłówkach – bez łączenia ze skrzynką."""
+    if not saved:
+        raise MailboxError('Najpierw pobierz nagłówki.')
+    saved['filter_roles'] = roles
+    request.session.modified = True
+    return redirect(request.path)
+
+
+def _ignore(request, action, context, config, selection):
+    """Zaznaczone wiadomości jako ignorowane (albo przywrócone) – bez łączenia ze skrzynką; zostają w niej."""
+    try:
+        selected = {int(value) for value in request.POST.getlist('selected')}
+    except (ValueError, TypeError):
+        raise MailboxError('Nieprawidłowy wybór wiadomości.') from None
+    if not selected or not selected.issubset(selection['uids']):
+        raise MailboxError('Wybierz wiadomości z pobranej listy.')
+    rows = {row['uid']: row for row in context.get('rows', [])}
+    set_ignored(config, selection['validity'], [rows.get(uid, {'uid': uid}) for uid in sorted(selected)], request.user,
+                action == 'ignore')
+    notifications.success(request, IGNORED_MESSAGES[action].format(len(selected)))
+    return redirect(request.path)
 
 
 def _selected_samples(request, action, context, config, selection):
@@ -208,39 +248,52 @@ def recruitment_mailbox(request):
     try:
         config = recruitment_connection()
         key = mailbox_key(config)
-        # Nocna migawka (domyślne filtry) zastępuje przy GET starsze nagłówki z sesji.
-        saved, notice = stored_headers(request, SESSION_KEY, config, key, roles=[], show=False)
+        # Nocna migawka (domyślne filtry, wybrane role zostają) zastępuje przy GET starsze nagłówki z sesji.
+        kept_roles = (request.session.get(SESSION_KEY) or {}).get('filter_roles', [])
+        saved, notice = stored_headers(request, SESSION_KEY, config, key, filter_roles=kept_roles, show=False,
+                                       show_ignored=False)
+        saved_roles = saved.get('filter_roles', []) if saved else []
         context.update(notice)
         post = request.method == 'POST'
         form = RecruitmentMailboxForm(request.POST if post else None,
-            initial={'roles': saved['roles'] or ['all'], 'show_downloaded': saved['show']} if saved else None)
+            initial={'roles': saved_roles or ['all'], 'show_downloaded': saved['show'],
+                     'show_ignored': saved.get('show_ignored', False)} if saved else None)
         date_form = MailboxDateForm(request.POST if post else None,
             initial=saved.get('date_filter') if saved else None)
         context.update(form=form, date_form=date_form, mailbox=config)
         if post:
             if not form.is_valid():
                 raise MailboxError('Popraw wybór ról.')
+            if action == 'filter':
+                return _filter(request, saved, form.cleaned_data['roles'])
             if not date_form.is_valid():
                 raise MailboxError('Popraw datę początkową.')
-            roles, show = form.cleaned_data['roles'], form.cleaned_data['show_downloaded']
-            sent_since = date_form.effective_date()
+            show, sent_since = form.cleaned_data['show_downloaded'], date_form.effective_date()
+            show_ignored = form.cleaned_data['show_ignored']
         else:
-            roles, show = (saved['roles'], saved['show']) if saved else ([], False)
+            show = saved['show'] if saved else False
+            show_ignored = saved.get('show_ignored', False) if saved else False
             sent_since = saved['sent_since'] if saved else DEFAULT_SENT_SINCE.isoformat()
-        identity = {'user': request.user.pk, 'mailbox': key, 'roles': roles, 'show': show, 'sent_since': sent_since}
-        if saved and saved['roles'] == roles and saved['show'] == show and saved['sent_since'] == sent_since:
-            _populate(context, config, identity, saved['result'])
+        # Pobranie nagłówków przyjmuje role z formularza, pozostałe działania – filtr zapisany przy liście.
+        roles = form.cleaned_data['roles'] if post and action == 'headers' else saved_roles
+        identity = {'user': request.user.pk, 'mailbox': key, 'show': show, 'show_ignored': show_ignored,
+                    'sent_since': sent_since}
+        if saved and all(saved.get(name, False) == identity[name] for name in ('show', 'show_ignored', 'sent_since')):
+            _populate(context, config, identity, saved['result'], saved_roles)
         if request.method == 'GET' and saved:
             return render(request, 'core/recruitment_mailbox.html', context)
-        excluded = None if show else lambda validity: imported_uids(config, validity)
+        excluded = excluded_uids(None if show else lambda validity: imported_uids(config, validity),
+                                 None if show_ignored else ignored_uids(config))
         if action == 'headers':
-            return _headers(request, context, config, identity, excluded)
+            return _headers(request, context, config, identity, excluded, roles)
         selection = _load(request.POST.get('selection', ''), identity, 'selection')
         if action == 'copy_emails':
             if not can_copy_emails(request.user):
                 raise PermissionDenied('Kopiowanie adresów jest dostępne dla koordynatorów i superusera.')
             return copied_emails(config, selection['validity'], excluded=excluded, recruitment_roles=roles,
                                  sent_since=sent_since)
+        if action in ('ignore', 'unignore'):
+            return _ignore(request, action, context, config, selection)
         if action not in MESSAGE_ACTIONS:
             raise MailboxError('Nieznana operacja.')
         samples = _selected_samples(request, action, context, config, selection)

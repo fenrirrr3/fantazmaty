@@ -67,8 +67,5 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = event.target;
         if (target.checked) boxes().forEach(box => { if ((box.value === 'all') !== (target.value === 'all')) box.checked = false; });
         if (!boxes().some(box => box.checked)) boxes().forEach(box => { box.checked = box.value === 'all'; });
-        clearTimeout(previewTimer);
-        controller?.abort(); ++serial;
-        clear('Zmieniono role. Pobierz nagłówki, aby odświeżyć listę.'); panel.setAttribute('aria-busy', 'false');
     });
 });

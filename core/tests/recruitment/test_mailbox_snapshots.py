@@ -6,7 +6,8 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase, tag
 from django.urls import reverse
 
-from core.models import MailboxConnection, MailboxDownload, MailboxHeaderSnapshot, Recruitment, RecruitmentMailSource
+from core.models import (MailboxConnection, MailboxDownload, MailboxHeaderSnapshot, MailboxIgnoredMessage, Recruitment,
+                         RecruitmentMailSource)
 from core.services.mailbox import MailboxError
 from core.services.mailbox_import import mailbox_key
 from core.services.mailbox_snapshots import UNEXPECTED_ERROR, refresh_snapshots
@@ -35,13 +36,14 @@ class RefreshSnapshotsTests(MailboxSnapshotMixin, TestCase):
     @patch.object(MailboxConnection, 'get_password', return_value='sekret-hasła')
     @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_first_page_without_imported_messages_is_saved_for_both_mailboxes(self, imap, password):
-        """Pobierane są same nagłówki (od domyślnej daty, tylko do odczytu) bez wiadomości już pobranych lub dodanych do bazy."""
+        """Pobierane są same nagłówki (od domyślnej daty, tylko do odczytu) bez wiadomości już pobranych, dodanych do bazy
+        i ignorowanych."""
         client = fake_imap(imap)
 
         def uid(command, *args):
             if command == 'SEARCH':
                 self.assertEqual(args[args.index('SENTSINCE') + 1], '02-Oct-2026')
-                return 'OK', [b'12 13 14']
+                return 'OK', [b'11 12 13 14']
             self.assertIn('BODY.PEEK[HEADER.FIELDS', args[-1])
             return 'OK', [(f'1 (UID {number} BODY[])'.encode(), f'Subject: Redakcja {number}\r\n\r\n'.encode())
                           for number in map(int, args[0].split(','))]
@@ -50,6 +52,8 @@ class RefreshSnapshotsTests(MailboxSnapshotMixin, TestCase):
         MailboxDownload.objects.create(mailbox_key=mailbox_key(self.submissions), uid_validity=7, uid=12)
         RecruitmentMailSource.objects.create(recruitment=Recruitment.objects.create(email='k@example.test'),
             mailbox_key=mailbox_key(self.recruitment), uid_validity=7, uid=13)
+        for box in (self.submissions, self.recruitment):
+            MailboxIgnoredMessage.objects.create(mailbox_key=mailbox_key(box), uid_validity=7, uid=11)
         summary = refresh_snapshots()
         self.assertEqual([(item['label'], item['status'], item['count']) for item in summary],
                          [('Zgłoszenia', 'ok', 2), ('Rekrutacja', 'ok', 2)])
@@ -66,10 +70,11 @@ class RefreshSnapshotsTests(MailboxSnapshotMixin, TestCase):
                                                   smtp_host='smtp.example.test', encrypted_password='unused')
         read = []
         with patch('core.services.mailbox_snapshots.read_headers',
-                   side_effect=lambda config, **options: read.append(config) or HEADERS):
+                   side_effect=lambda config, **options: read.append((config, options.get('page_size'))) or HEADERS):
             summary = refresh_snapshots()
         self.assertEqual([item['status'] for item in summary], ['ok', 'ok'])
-        self.assertEqual(read, [self.submissions, self.recruitment])
+        # Próbki rekrutacyjne: większa strona, jak przy ręcznym pobraniu nagłówków.
+        self.assertEqual(read, [(self.submissions, None), (self.recruitment, 500)])
         self.assertFalse(MailboxHeaderSnapshot.objects.filter(mailbox=sender).exists())
 
     def test_failure_of_one_mailbox_is_saved_without_credentials_and_other_continues(self):

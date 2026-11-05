@@ -19,6 +19,7 @@
 <select id="mailbox-subject-filter" name="subject_filter"><option value="">Wszystkie wiadomości</option>{% for title in subject_choices %}<option value="{{ title }}" {% if subject_filter == title %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
 <div class="mailbox-options mailbox-options-grid">
 <label class="mailbox-option"><input type="checkbox" name="show_downloaded" {% if show_downloaded %}checked{% endif %}><span>Pokaż również już pobrane wiadomości</span></label>
+<label class="mailbox-option"><input type="checkbox" name="show_ignored" {% if show_ignored %}checked{% endif %}><span>Pokaż również ignorowane wiadomości</span></label>
 <label class="mailbox-option"><input type="checkbox" name="rebuild" {% if rebuild %}checked{% endif %}><span>Przebuduj do nowego DOCX</span></label>
 <label class="mailbox-option"><input type="checkbox" name="clean" {% if clean %}checked{% endif %}><span>Popraw pliki Odkurzaczem</span></label>
 <label class="mailbox-option"><input type="checkbox" name="convert" {% if convert %}checked{% endif %}><span>Konwertuj do PDF i EPUB</span></label>
@@ -27,6 +28,8 @@
 <div class="actions mailbox-actions">
 <button class="primary-button" name="action" value="headers">Pobierz nagłówki</button>
 <button class="primary-button" name="action" value="download" data-mailbox-progress {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
+<button class="secondary-button" name="action" value="ignore" {% if not result.rows %}disabled{% endif %}>Ignoruj zaznaczone</button>
+{% if ignored_shown %}<button class="secondary-button" name="action" value="unignore" {% if not result.rows %}disabled{% endif %}>Przywróć zaznaczone</button>{% endif %}
 </div>
 <div class="panel program-progress mailbox-progress" data-mailbox-progress-box hidden><p role="status" aria-live="polite" data-mailbox-progress-label></p><progress aria-label="Postęp pobierania zgłoszeń"></progress></div>
 </div>
@@ -36,7 +39,7 @@
 {% include "core/includes/recruitment_preview.html" %}
 </section>
 <div class="table-container"><table data-email-mailbox="true" data-pagination="off" class="mailbox-import-table"><thead><tr><th><input type="checkbox" data-select-table="uids" aria-label="Zaznacz wszystkie wiadomości"></th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
-{% for row in result.rows %}<tr{% if row.blacklisted %} class="mailbox-blacklisted-row"{% endif %}><td><input type="checkbox" name="uids" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz {{ row.subject }}"></td><td>{{ row.date|default:'–' }}</td><td><div>{{ row.sender|default:'–' }}{% if row.blacklisted %}{% include "core/includes/mailbox_blacklist_choice.html" with uid=row.uid choice=row.blacklist_choice form_id="" %}{% endif %}</div></td><td class="recruitment-subject"><button class="recruitment-subject-button" type="submit" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">{{ row.subject|default:'(bez tematu)' }}</button></td><td>{{ row.downloaded|yesno:'Tak,Nie' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
+{% for row in result.rows %}<tr{% if row.blacklisted %} class="mailbox-blacklisted-row"{% endif %}><td><input type="checkbox" name="uids" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz {{ row.subject }}"></td><td>{{ row.date|default:'–' }}</td><td><div>{{ row.sender|default:'–' }}{% if row.blacklisted %}{% include "core/includes/mailbox_blacklist_choice.html" with uid=row.uid choice=row.blacklist_choice form_id="" %}{% endif %}</div></td><td class="recruitment-subject"><button class="recruitment-subject-button" type="submit" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">{{ row.subject|default:'(bez tematu)' }}</button></td><td>{{ row.downloaded|yesno:'Tak,Nie' }}{% if row.ignored %} <span class="badge mailbox-ignored-badge">Ignorowana</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="pagination-bar"><div class="pagination-links actions">
 {% if result.previous_cursor %}<button class="secondary-button" name="cursor" value="{{ result.previous_cursor }}">← Nowsze</button>{% endif %}
@@ -64,7 +67,7 @@
 {% for uid in selected %}<input type="hidden" name="uids" value="{{ uid }}">{% endfor %}
 {% if rebuild %}<input type="hidden" name="rebuild" value="on">{% endif %}
 {% if clean %}<input type="hidden" name="clean" value="on">{% endif %}{% if convert %}<input type="hidden" name="convert" value="on">{% endif %}
-{% if show_downloaded %}<input type="hidden" name="show_downloaded" value="on">{% endif %}
+{% if show_downloaded %}<input type="hidden" name="show_downloaded" value="on">{% endif %}{% if show_ignored %}<input type="hidden" name="show_ignored" value="on">{% endif %}
 {% if rebuild_warning %}
 <p class="form-warning">{{ rebuild_warning_text }} Zgłoszenia nie zostały jeszcze zapisane. Akceptacja dotyczy wszystkich nieobsługiwanych plików w tej paczce.</p>
 {% endif %}

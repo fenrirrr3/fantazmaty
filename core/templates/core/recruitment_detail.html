@@ -27,6 +27,7 @@
                 <input type="hidden" name="version" value="{{ section.version }}">
                 {{ section.form.as_p }}
                 {% if section.decision.reason_author_name %}<p class="form-help">Uzasadnienie: {{ section.decision.reason_author_name }} · {{ section.decision.reason_updated_at|date:'d.m.Y H:i' }}</p>{% elif section.decision.decision_reason %}<p class="form-help">Autor wcześniejszego uzasadnienia: brak zapisanej informacji.</p>{% endif %}
+                {% if section.decision.notes_author_name %}<p class="form-help">Nieoficjalne notatki: {{ section.decision.notes_author_name }} · {{ section.decision.notes_updated_at|date:'d.m.Y H:i' }}</p>{% elif section.decision.unofficial_notes %}<p class="form-help">Autor wcześniejszych notatek: brak zapisanej informacji.</p>{% endif %}
                 <p class="form-help">Zapis dotyczy wyłącznie tej roli. Nie wysyła wiadomości ani nie zmienia pola Powiadomiony.</p>
                 <div class="actions recruitment-actions"><button class="primary-button" type="submit">Zapisz decyzję: {{ section.label }}</button></div>
             </form>

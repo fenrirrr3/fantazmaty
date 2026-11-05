@@ -111,7 +111,8 @@ class SampleArchiveTests(SimpleTestCase):
 @tag('external')
 class RecruitmentSamplesTests(RecruitmentMailboxMixin, TestCase):
     def test_all_is_default_and_headers_survive_return_navigation(self):
-        self.assertEqual(self.headers.call_args.kwargs['recruitment_roles'], [])
+        self.assertEqual((self.headers.call_args.kwargs['recruitment_roles'],
+                          self.headers.call_args.kwargs['page_size']), ([], 500))
         self.headers.reset_mock()
         response = self.client.get(self.url)
         self.headers.assert_not_called()
@@ -341,8 +342,8 @@ class RecruitmentMailboxFiltersTests(RecruitmentMailboxMixin, TestCase):
                                                            username='teksty@example.test', encrypted_password='unused')
 
     def token(self, **changes):
-        data = {'user': self.user.pk, 'mailbox': mailbox_key(self.box), 'roles': ['editors', 'reviewers'],
-                'show': False, 'kind': 'selection', 'validity': 7, 'uids': [12, 13]}
+        data = {'user': self.user.pk, 'mailbox': mailbox_key(self.box), 'show': False, 'show_ignored': False,
+                'kind': 'selection', 'validity': 7, 'uids': [12, 13]}
         data.update(changes)
         return signing.dumps(data, salt=SALT)
 
@@ -381,21 +382,57 @@ class RecruitmentMailboxFiltersTests(RecruitmentMailboxMixin, TestCase):
         self.assertNotEqual(recruitment_key, mailbox_key(self.box))
 
     @patch('core.views.recruitment_mailbox.read_headers')
-    def test_multiple_filters_signed_cursor_and_selection(self, read):
-        cursor = {'anchor': 100, 'boundary': 51, 'direction': 'older', 'validity': 7}
-        read.return_value = {'rows': [{'uid': 12, 'sender': 'a@example.test', 'subject': 'Redakcja, Recenzje', 'date': ''}],
-                             'total': 60, 'validity': 7, 'next_cursor': cursor, 'previous_cursor': None}
-        response = self.client.post(self.url, {'roles': ['reviewers', 'editors'], 'action': 'headers'}, follow=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(read.call_args.kwargs['recruitment_roles'], ['editors', 'reviewers'])
-        token = response.context['next_cursor']
-        response = self.client.post(self.url, {'roles': ['editors', 'reviewers'], 'cursor': token}, follow=True)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(read.call_args.args[1], cursor)
+    def test_roles_filter_downloaded_headers_without_mailbox(self, read):
+        """Nagłówki wszystkich ról pobierane raz; „Filtruj według ról” zawęża listę, wybór i kopiowanie bez
+        łączenia ze skrzynką, a kursor kolejnej strony nie zależy od ról."""
+        cursor = {'anchor': 100, 'boundary': 11, 'direction': 'older', 'validity': 7}
+        subjects = {14: 'Nabór – Jan – Ilustracje', 13: 'Nabór – Anna – Recenzje', 12: 'Nabór – Ewa – Redakcja, Recenzje'}
+        read.return_value = {'rows': [{'uid': uid, 'sender': f'{uid}@example.test', 'subject': subject, 'date': ''}
+                                      for uid, subject in subjects.items()],
+                             'total': 600, 'validity': 7, 'next_cursor': cursor, 'previous_cursor': None}
+        dated = {'date_filter_enabled': 'on', 'sent_since': '2026-10-02'}
+        page = self.client.post(self.url, {'roles': ['reviewers'], 'action': 'headers', **dated}, follow=True)
+        self.assertEqual((read.call_count, read.call_args.kwargs['recruitment_roles'], read.call_args.kwargs['page_size']),
+                         (1, [], 500))
+        for roles, uids, summary in (
+            (['reviewers'], [13, 12], 'pobrane: 3, w wybranych rolach (Recenzje): 2.'),
+            (['editors', 'illustrators'], [14, 12], 'pobrane: 3, w wybranych rolach (Redakcja, Ilustracje): 2.'),
+            (['all'], [14, 13, 12], 'Dopasowane wiadomości: 600, pobrane: 3. '),
+        ):
+            with self.subTest(roles=roles):
+                if roles != ['reviewers']:
+                    page = self.client.post(self.url, {'roles': roles, 'action': 'filter', 'date_filter_enabled': 'on',
+                                                       'sent_since': 'zła data'}, follow=True)
+                self.assertEqual([row['uid'] for row in page.context['rows']], uids)
+                self.assertEqual(signing.loads(page.context['selection'], salt=SALT)['uids'], uids)
+                self.assertContains(page, summary)
+                self.assertContains(page, 'value="filter"')
+        self.assertEqual(read.call_count, 1)
+        self.client.post(self.url, {'roles': ['editors'], 'action': 'filter'})
+        with patch('core.services.mailbox_email_copy.sender_emails', return_value=[]) as copy:
+            self.client.post(self.url, {'action': 'copy_emails', 'roles': ['all'], 'selection': page.context['selection'],
+                                        **dated})
+        self.assertEqual(copy.call_args.kwargs['recruitment_roles'], ['editors'])
+        # Starsze wiadomości: ten sam kursor po zmianie ról, filtr z formularza i kolejne 500 nagłówków.
+        token = page.context['next_cursor']
+        page = self.client.post(self.url, {'roles': ['illustrators'], 'cursor': token, **dated}, follow=True)
+        self.assertEqual((read.call_count, read.call_args.args[1]), (2, cursor))
+        self.assertEqual([row['uid'] for row in page.context['rows']], [14])
+        self.assertContains(page, 'value="illustrators" id="id_roles_')
+        self.assertTrue(html.fromstring(page.content).xpath('//input[@value="illustrators" and @checked]'))
+        self.assertFalse(html.fromstring(page.content).xpath('//table[@data-pagination="off"]'))
         read.reset_mock()
-        response = self.client.post(self.url, {'roles': ['editors'], 'cursor': token})
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.client.post(self.url, {'roles': ['editors'], 'cursor': 'zmieniony', **dated}).status_code, 400)
         read.assert_not_called()
+
+    def test_filter_without_headers_or_with_unknown_role_is_refused(self):
+        self.client.session.flush()
+        self.client.force_login(self.user)
+        for name, roles, message in (('brak nagłówków', ['editors'], 'Najpierw pobierz nagłówki.'),
+                                     ('nieznana rola', ['fake'], 'Popraw wybór ról.')):
+            with self.subTest(name):
+                response = self.client.post(self.url, {'roles': roles, 'action': 'filter'})
+                self.assertEqual((response.status_code, response.context['error']), (400, message))
 
     @patch('core.views.recruitment_mailbox.fetch_messages')
     def test_download_without_attachments_still_registers_message(self, fetch):
@@ -413,23 +450,24 @@ class RecruitmentMailboxFiltersTests(RecruitmentMailboxMixin, TestCase):
 
     @patch('core.views.recruitment_mailbox.fetch_messages')
     def test_tampered_selection_and_changed_filters_are_rejected(self, fetch):
-        for token, selected, roles in [
-            (self.token(user=self.member.pk), ['12'], ['editors', 'reviewers']),
-            (self.token(), ['99'], ['editors', 'reviewers']),
-            (self.token(), ['12'], ['reviewers']),
-            (self.token(), [], ['editors', 'reviewers']),
+        for token, selected, extra in [
+            (self.token(user=self.member.pk), ['12'], {}),
+            (self.token(), ['99'], {}),
+            (self.token(), ['12'], {'show_downloaded': 'on'}),
+            (self.token(), ['12'], {'date_filter_enabled': 'on', 'sent_since': '2026-10-03'}),
+            (self.token(), [], {}),
         ]:
-            response = self.client.post(self.url, {'action': 'download', 'roles': roles, 'selected': selected,
-                                                   'selection': token})
+            response = self.client.post(self.url, {'action': 'download', 'roles': ['all'], 'selected': selected,
+                                                   'selection': token, **extra})
             self.assertEqual(response.status_code, 400)
         fetch.assert_not_called()
 
     @patch('core.services.mailbox_email_copy.sender_emails', return_value=['a@example.test'])
     def test_copy_endpoint_uses_signed_recruitment_filters(self, copy):
-        response = self.client.post(self.url, {'action': 'copy_emails', 'roles': ['editors', 'reviewers'],
-                                               'selection': self.token()})
+        response = self.client.post(self.url, {'action': 'copy_emails', 'roles': ['editors'], 'selection': self.token()})
         self.assertEqual(response.json(), {'emails': ['a@example.test']})
-        self.assertEqual(copy.call_args.kwargs['recruitment_roles'], ['editors', 'reviewers'])
+        self.assertEqual((copy.call_args.kwargs['recruitment_roles'], copy.call_args.kwargs['sent_since']),
+                         ([], ''))
         self.assertFalse(MailboxDownload.objects.exists())
 
 
