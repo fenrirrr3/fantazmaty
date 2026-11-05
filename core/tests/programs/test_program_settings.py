@@ -82,11 +82,13 @@ class RememberedSettingsTests(ProgramViewMixin, TestCase):
         data = self.stored()
         self.assertEqual(set(data), {'convert', 'repetitions'})
         self.assertEqual(data['convert'], {'formats': ['pdf'], 'use_cleaner': True, 'rules': ['spaces'],
-                                           'dialog_lists': False, 'known_rules': [key for key, _ in EDITORIAL_RULES]})
+                                           'remove_soft_whitespace': False, 'dialog_lists': False,
+                                           'known_rules': [key for key, _ in EDITORIAL_RULES]})
         self.assertEqual(data['repetitions']['window_size'], 50)
         context = self.client.get(self.url).context
         self.assertEqual(context['conversion_form'].initial,
-                         {'formats': ['pdf'], 'use_cleaner': True, 'rules': ['spaces'], 'dialog_lists': False})
+                         {'formats': ['pdf'], 'use_cleaner': True, 'rules': ['spaces'], 'remove_soft_whitespace': False,
+                          'dialog_lists': False})
         self.assertEqual(context['repetitions_form'].initial['color_palette'], 'light')
         self.assertEqual(context['form'].initial, {})  # Odkurzacz: nic nie zapisano – wartości domyślne
         self.client.force_login(self.other)

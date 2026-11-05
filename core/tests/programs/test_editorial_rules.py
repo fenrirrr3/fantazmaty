@@ -16,7 +16,7 @@ from core.odkurzacz_forms import (
 from core.services.odkurzacz import (
     ABBREVIATION_GROUPS, ALL_EDITORIAL_RULES, CONTEXT, DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS,
     EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, MAX_PATTERN_LENGTH, ORTHOGRAPHY_2026_KEYS,
-    ORTHOGRAPHY_2026_RULES, SENTENCE_ABBREVIATIONS, USER_WORD_EXACT, USER_WORD_PATTERNS, _change_regions,
+    ORTHOGRAPHY_2026_RULES, RULE_DESCRIPTIONS, SENTENCE_ABBREVIATIONS, USER_WORD_EXACT, USER_WORD_PATTERNS, _change_regions,
     _compile_pattern, _edit_opcodes, clean_docx, compile_replacements, correct_editorial_text,
 )
 
@@ -589,8 +589,26 @@ class ProgramFormTests(SimpleTestCase):
         # Automatyczne czyszczenie poczty zachowuje dotychczasowe reguły.
         self.assertTrue(DEFAULT_EDITORIAL_RULES)
 
-    def test_only_the_cleaner_offers_formatting_and_soft_whitespace_options(self):
-        self.assertNotIn('remove_soft_whitespace', DocumentConversionForm(prefix='convert').fields)
+    def test_converter_soft_whitespace_works_with_the_cleaner(self):
+        """Miękkie entery w konwerterze: tylko z zaznaczonym polem i opcją „Użyj Odkurzacza”."""
+        from core.views.programs import job_options
+        form = DocumentConversionForm(prefix='convert')
+        active = patch('core.views.programs.ReplacementEntry.active_replacements', return_value=[])
+        active.start()
+        self.addCleanup(active.stop)
+        for use_cleaner, soft, expected in ((True, True, True), (True, False, False), (False, True, False)):
+            with self.subTest(use_cleaner=use_cleaner, soft=soft):
+                form.cleaned_data = {'formats': ['epub'], 'use_cleaner': use_cleaner, 'rules': ['spaces'],
+                                     'remove_soft_whitespace': soft, 'dialog_lists': True}
+                self.assertIs(job_options('convert', form)['remove_soft_whitespace'], expected)
+
+    def test_only_the_cleaner_offers_formatting_options(self):
+        """Konwerter ma te same opcje korekty co Odkurzacz (z Odkurzaczem włączonym domyślnie), ale bez
+        ujednolicania formatowania."""
+        conversion = DocumentConversionForm(prefix='convert')
+        self.assertIs(conversion.fields['remove_soft_whitespace'].initial, True)
+        self.assertIs(conversion.fields['use_cleaner'].initial, True)
+        self.assertEqual(conversion.fields['rules'].initial, OdkurzaczForm().fields['rules'].initial)
         self.assertNotIn('normalize_formatting', DocumentConversionForm().fields)
         self.assertNotIn('normalize_formatting', RepetitionsForm().fields)
 
@@ -976,8 +994,8 @@ class Orthography2026RuleTests(SimpleTestCase):
                                           - {'sentence_case', 'pronouns_lower'}))
 
     def test_rules_form_one_group_switched_on_by_default(self):
-        """Pięć osobnych reguł jedna po drugiej, przed wielką literą po kropce; etykiety z nazwą grupy
-        i przykładem; domyślnie włączone w formularzu i w automatycznym czyszczeniu zgłoszeń z poczty."""
+        """Pięć osobnych reguł jedna po drugiej, przed wielką literą po kropce; krótkie etykiety z nazwą grupy
+        i opis z przykładem; domyślnie włączone w formularzu i w automatycznym czyszczeniu zgłoszeń z poczty."""
         keys = [key for key, _ in EDITORIAL_RULES]
         group = [key for key, _ in ORTHOGRAPHY_2026_RULES]
         self.assertEqual(group, ['by_separate', 'niby_quasi', 'prefix_hyphen', 'pol_compounds', 'nie_comparative'])
@@ -986,7 +1004,7 @@ class Orthography2026RuleTests(SimpleTestCase):
         self.assertLess(start, keys.index('sentence_case'))
         for key, label in ORTHOGRAPHY_2026_RULES:
             with self.subTest(key=key):
-                self.assertTrue(label.startswith('Ortografia 2026: ') and '→' in label)
+                self.assertTrue(label.startswith('Ortografia 2026: ') and '→' in RULE_DESCRIPTIONS[key])
         self.assertTrue(ORTHOGRAPHY_2026_KEYS <= DEFAULT_EDITORIAL_RULES)
         self.assertTrue(ORTHOGRAPHY_2026_KEYS <= FORM_DEFAULT_EDITORIAL_RULES)
         self.assertTrue(ORTHOGRAPHY_2026_KEYS <= set(OdkurzaczForm().fields['rules'].initial))

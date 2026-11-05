@@ -63,6 +63,16 @@
             </div>
             {{ form.track_changes.errors }}{{ form.cleaner_summary.errors }}
             {% include "core/includes/program_dialog_lists.html" with field=form.dialog_lists %}
+            <div class="program-check">
+                <label for="{{ form.remove_fonts.id_for_label }}">{{ form.remove_fonts }} <span>{{ form.remove_fonts.label }}</span></label>
+                <details class="help-tip"><summary aria-label="Pomoc: {{ form.remove_fonts.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                    <div class="help-tip-body">
+                        <p>Word z opcją „Osadź czcionki w pliku” zapisuje w dokumencie całe pliki czcionek – kilka stron tekstu może wtedy ważyć kilka megabajtów. Po usunięciu tekst zachowuje nazwy czcionek, a Word użyje czcionek zainstalowanych w systemie.</p>
+                        <p>Przebudowa zawsze tworzy dokument bez osadzonych czcionek.</p>
+                    </div>
+                </details>
+            </div>
+            {{ form.remove_fonts.errors }}
         </div>
 
         <fieldset class="program-rules">
@@ -79,7 +89,7 @@
                 </details>
                 {% include "core/includes/program_rule_actions.html" %}
             </div>
-            {% include "core/includes/program_rules.html" with rules=form.rules soft=form.remove_soft_whitespace fonts=form.remove_fonts %}
+            {% include "core/includes/program_rules.html" with rules=form.rules soft=form.remove_soft_whitespace %}
         </fieldset>
 
         <details class="program-advanced"{% if form.normalize_formatting.value or form.rebuild.value or form.keep_page_format.value or form.normalize_formatting.errors or form.keep_page_format.errors %} open{% endif %}>
@@ -171,7 +181,7 @@
                 <label for="{{ conversion_form.use_cleaner.id_for_label }}">{{ conversion_form.use_cleaner }} <span>{{ conversion_form.use_cleaner.label }}</span></label>
                 <details class="help-tip"><summary aria-label="Pomoc: {{ conversion_form.use_cleaner.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
                     <div class="help-tip-body">
-                        <p>Ta opcja stosuje przed konwersją wybrane reguły Odkurzacza oraz zamianę miękkich enterów na nowe akapity i spacji nieprzenoszących na zwykłe spacje.</p>
+                        <p>Ta opcja stosuje przed konwersją opcje korekty – te same co w Odkurzaczu: wybrane reguły oraz (jeśli zaznaczona) zamianę miękkich enterów na nowe akapity i spacji nieprzenoszących na zwykłe spacje. Domyślnie jest włączona.</p>
                         <p>E-book i PDF zawierają tekst po przyjęciu śledzonych zmian, bez komentarzy.</p>
                     </div>
                 </details>
@@ -183,12 +193,12 @@
             <legend>{{ conversion_form.rules.label }}</legend>
             <div class="program-group-bar">
                 <details class="help-tip"><summary aria-label="Pomoc: {{ conversion_form.rules.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
-                    <div class="help-tip-body"><p>Działają tylko z zaznaczoną opcją „Użyj Odkurzacza”. Domyślnie zaznaczone są te same reguły co w Odkurzaczu.</p></div>
+                    <div class="help-tip-body"><p>Działają tylko z zaznaczoną opcją „Użyj Odkurzacza”. Lista i domyślne zaznaczenie są takie same jak w Odkurzaczu.</p></div>
                 </details>
                 {% include "core/includes/program_rule_actions.html" %}
             </div>
             {{ conversion_form.rules_shown }}
-            {% include "core/includes/program_rules.html" with rules=conversion_form.rules soft=None %}
+            {% include "core/includes/program_rules.html" with rules=conversion_form.rules soft=conversion_form.remove_soft_whitespace %}
         </fieldset>
     </form>
     <div class="program-footer">

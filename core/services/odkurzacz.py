@@ -21,63 +21,88 @@ else:
     from document_styles import document_outline, paragraph_properties
     from document_xml import FALLBACK
 
-# Reguły są wykonywane w ustalonej kolejności, niezależnie od kolejności kliknięć.
+# Reguły są wykonywane w ustalonej kolejności, niezależnie od kolejności kliknięć. Podpis reguły jest krótki
+# (lista w programach, podsumowanie zmian); szczegóły i przykłady są w RULE_DESCRIPTIONS (zwijany opis „?”).
 EDITORIAL_RULES = (
-    ('invisible_chars', 'Niewidoczne znaki z kopiowania (zero-width space, miękki łącznik, BOM, znaki kierunku)'),
+    ('invisible_chars', 'Niewidoczne znaki z kopiowania'),
     ('spaces', 'Podwójne i wielokrotne spacje'),
     ('trim', 'Spacje na początku i końcu akapitu'),
-    ('tabs', 'Tabulatory i mieszanki tabulatorów ze spacjami → jedna spacja'),
+    ('tabs', 'Tabulatory w akapicie → jedna spacja'),
     ('before_punct', 'Spacje przed znakami interpunkcyjnymi'),
     ('after_punct', 'Brakujące spacje po interpunkcji (z wyjątkami)'),
     ('inside_brackets', 'Spacje wewnątrz nawiasów'),
     ('inside_quotes', 'Spacje wewnątrz cudzysłowów'),
     ('outside_brackets', 'Brakujące spacje wokół nawiasów'),
-    ('quotes', 'Proste, angielskie i inne cudzysłowy → polskie „…”, cytat w cytacie «…»'),
-    ('apostrophe', 'Apostrof prosty wewnątrz wyrazu → typograficzny ’'),
+    ('quotes', 'Cudzysłowy → polskie „…”'),
+    ('apostrophe', 'Apostrof wewnątrz wyrazu → ’'),
     ('ellipsis', 'Wielokropek → …'),
-    ('duplicate_punct', 'Powtórzone przecinki, średniki, dwukropki i podwójne kropki'),
-    ('quote_punct', 'Kropka i przecinek zawsze za cudzysłowem zamykającym: „tak”.'),
-    ('note_references', 'Odsyłacze przypisów wg polskich norm: bez spacji przed odsyłaczem; przed kropką, '
-                        'przecinkiem, średnikiem i dwukropkiem; za cudzysłowem i nawiasem zamykającym, '
-                        'pytajnikiem, wykrzyknikiem i wielokropkiem'),
+    ('duplicate_punct', 'Powtórzone znaki interpunkcyjne'),
+    ('quote_punct', 'Kropka i przecinek za cudzysłowem'),
+    ('note_references', 'Odsyłacze przypisów wg polskich norm'),
     ('hyphen_dash', 'Łącznik użyty jako myślnik → półpauza'),
-    ('dash_style', 'Pauza, pauza cyfrowa, kreska pozioma i minus → półpauza –; łączniki Unicode → dywiz -; '
-                   'powtórzone myślniki → jeden'),
+    ('dash_style', 'Kreski → półpauza i dywiz'),
     ('dash_spaces', 'Odstępy przy myślnikach i początku kwestii dialogowej'),
     ('range_dash', 'Łącznik w zakresach liczbowych → półpauza'),
     ('range_spaces', 'Usuwanie spacji wewnątrz zakresów liczbowych'),
-    ('unit_nbsp', 'Jedna zwykła spacja między liczbą a jednostką: 5 kg; procent bez spacji: 5%'),
-    ('unit_space', 'Brakująca spacja między liczbą a jednostką; m2 → m²'),
-    ('reference_nbsp', 'Jedna zwykła spacja w zapisach: 2025 r., s. 15, nr 3'),
-    ('reference_space', 'Brakująca spacja: 2025r., s.15, nr3, ok.5; błędne „nr.” → nr'),
+    ('unit_nbsp', 'Jedna spacja między liczbą a jednostką'),
+    ('unit_space', 'Brakująca spacja między liczbą a jednostką'),
+    ('reference_nbsp', 'Jedna spacja w zapisach: 2025 r., s. 15, nr 3'),
+    ('reference_space', 'Brakująca spacja w zapisach: 2025r., s.15'),
     ('initials', 'Odstępy przy inicjałach i nazwisku'),
-    ('abbreviations', 'Usuń spacje wewnątrz skrótów: m. in. → m.in., t. j. → tj., t. zw. → tzw., '
-                      'n. p. m. → n.p.m., p. p. m. → p.p.m., p. n. e. → p.n.e.'),
-    ('dates_times', 'Daty DD.MM.RRRR i godziny HH:MM (jednoznaczne zapisy)'),
+    ('abbreviations', 'Spacje wewnątrz skrótów: m. in. → m.in.'),
+    ('dates_times', 'Daty DD.MM.RRRR i godziny HH:MM'),
     ('decimal', 'Przecinek dziesiętny przy jednostkach i kwotach'),
     ('digit_groups', 'Grupowanie dużych liczb spacją: 12 345'),
     ('temperature', 'Temperatura: 20 °C / 20 °F / 20 K'),
-    ('pronouns_lower', 'Zaimki osobowe małą literą – poza początkiem zdania i akapitu'),
+    ('pronouns_lower', 'Zaimki osobowe małą literą'),
     ('user_word_corrections', 'Własne zamiany słownikowe (słownik zamian w CMS)'),
 )
 # Grupa „Ortografia 2026”: zmiany zasad pisowni obowiązujące od 1 stycznia 2026 r. (komunikat RJP
 # z 10 maja 2024 r., zmiany 3, 6, 9a, 10 i 11) – tylko zapisy rozpoznawalne bez rozumienia zdania.
 ORTHOGRAPHY_2026_RULES = (
-    ('by_separate', 'Ortografia 2026: -by osobno po spójnikach i partykułach (czyby → czy by, alebym → ale bym; '
-                    'aby, żeby, gdyby, jakby, niby bez zmian)'),
-    ('niby_quasi', 'Ortografia 2026: niby, quasi, pseudo łącznie przed małą literą, z łącznikiem przed wielką '
-                   '(niby-artysta → nibyartysta, quasiAnglia → quasi-Anglia)'),
-    ('prefix_hyphen', 'Ortografia 2026: łącznik po przedrostku przed wielką literą (superPolak → super-Polak, '
-                      'antyPiS → anty-PiS)'),
-    ('pol_compounds', 'Ortografia 2026: pół żartem, pół serio → półżartem, półserio; pół Polak, pół Szkot → '
-                      'pół-Polak, pół-Szkot („pół godziny” bez zmian)'),
-    ('nie_comparative', 'Ortografia 2026: „nie” łącznie ze stopniem wyższym i najwyższym (nie najlepszy → '
-                        'nienajlepszy, nie lepiej niż → nielepiej niż; zapisy sporne bez zmian)'),
+    ('by_separate', 'Ortografia 2026: -by osobno po spójnikach i partykułach'),
+    ('niby_quasi', 'Ortografia 2026: niby, quasi, pseudo'),
+    ('prefix_hyphen', 'Ortografia 2026: łącznik po przedrostku przed wielką literą'),
+    ('pol_compounds', 'Ortografia 2026: wyrażenia z „pół”'),
+    ('nie_comparative', 'Ortografia 2026: „nie” ze stopniem wyższym i najwyższym'),
 )
 ORTHOGRAPHY_2026_KEYS = frozenset(key for key, _ in ORTHOGRAPHY_2026_RULES)
 EDITORIAL_RULES += ORTHOGRAPHY_2026_RULES + (
-    ('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
+    ('sentence_case', 'Wielka litera po . ? ! –'),
     ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'))
+# Opisy reguł (szczegóły i przykłady) pokazywane po rozwinięciu „?” przy regule.
+RULE_DESCRIPTIONS = {
+    'invisible_chars': 'Spacja o zerowej szerokości, miękki łącznik, BOM i znaki kierunku tekstu.',
+    'tabs': 'Tabulatory i mieszanki tabulatorów ze spacjami w środku akapitu stają się jedną spacją. Tabulator '
+            'na początku akapitu nie jest zamieniany na spację – zawsze staje się wcięciem akapitowym (także przy '
+            'wyłączonej regule).',
+    'quotes': 'Proste, angielskie i inne cudzysłowy → polskie „…”, cytat w cytacie «…».',
+    'apostrophe': 'Apostrof prosty wewnątrz wyrazu → typograficzny ’.',
+    'duplicate_punct': 'Powtórzone przecinki, średniki, dwukropki i podwójne kropki.',
+    'quote_punct': 'Kropka i przecinek zawsze za cudzysłowem zamykającym: „tak”.',
+    'note_references': 'Bez spacji przed odsyłaczem; przed kropką, przecinkiem, średnikiem i dwukropkiem; za '
+                       'cudzysłowem i nawiasem zamykającym, pytajnikiem, wykrzyknikiem i wielokropkiem.',
+    'dash_style': 'Pauza, pauza cyfrowa, kreska pozioma i minus → półpauza –; łączniki Unicode → dywiz -; '
+                  'powtórzone myślniki → jeden.',
+    'unit_nbsp': 'Jedna zwykła spacja między liczbą a jednostką: 5 kg; procent bez spacji: 5%.',
+    'unit_space': 'Brakująca spacja między liczbą a jednostką: 5kg → 5 kg; m2 → m².',
+    'reference_nbsp': 'Jedna zwykła spacja w zapisach: 2025 r., s. 15, nr 3.',
+    'reference_space': 'Brakująca spacja: 2025r., s.15, nr3, ok.5; błędne „nr.” → nr.',
+    'abbreviations': 'Usuwa spacje wewnątrz skrótów: m. in. → m.in., t. j. → tj., t. zw. → tzw., n. p. m. → '
+                     'n.p.m., p. p. m. → p.p.m., p. n. e. → p.n.e.',
+    'dates_times': 'Tylko jednoznaczne zapisy dat (DD.MM.RRRR) i godzin (HH:MM).',
+    'pronouns_lower': 'Zaimki osobowe (Ty, Ciebie, Wy…) małą literą – poza początkiem zdania i akapitu.',
+    'by_separate': '-by osobno po spójnikach i partykułach: czyby → czy by, alebym → ale bym; aby, żeby, gdyby, '
+                   'jakby, niby bez zmian.',
+    'niby_quasi': 'Niby, quasi, pseudo łącznie przed małą literą, z łącznikiem przed wielką: niby-artysta → '
+                  'nibyartysta, quasiAnglia → quasi-Anglia.',
+    'prefix_hyphen': 'superPolak → super-Polak, antyPiS → anty-PiS.',
+    'pol_compounds': 'pół żartem, pół serio → półżartem, półserio; pół Polak, pół Szkot → pół-Polak, pół-Szkot '
+                     '(„pół godziny” bez zmian).',
+    'nie_comparative': 'nie najlepszy → nienajlepszy, nie lepiej niż → nielepiej niż; zapisy sporne bez zmian.',
+    'sentence_case': 'Wielka litera po kropce, pytajniku, wykrzykniku i myślniku – z wyjątkami dla skrótów, liczb '
+                     'i dialogów.',
+}
 ALL_EDITORIAL_RULES = frozenset(key for key, _ in EDITORIAL_RULES)
 # Podpisy liczników podsumowania zmian: reguły i ciche kroki _replace_nonbreaking_spaces i _tab_indents.
 SUMMARY_LABELS = {**dict(EDITORIAL_RULES),
@@ -2131,16 +2156,18 @@ def _tracked_tab_removal(edits, tracker):
     remove_leading_tabs(edits)
 
 
-def _tab_indents(doc, counts, tracker=None):
-    """Tabulator na początku akapitu treści → wcięcie pierwszego wiersza. Reguła tabulatorów zamieniłaby go na
-    spację, a początek akapitu jest przycinany, więc akapit traciłby wcięcie. Wcięcie: najczęstsze w dokumencie
-    albo 1,25 cm; akapit z własnym wcięciem pierwszego wiersza je zachowuje. Nagłówki, punkty listy, akapity
-    wyśrodkowane i do prawej, tabele, akapity bez tekstu po tabulatorze oraz początek w śledzonej zmianie zostają
-    bez zmian. Ze śledzeniem zmian (tracker) usunięcie tabulatora i wcięcie są zmianami do przejrzenia."""
+def _tab_indents(doc, paragraphs, counts, tracker=None):
+    """Tabulator na początku akapitu treści (także w tabeli i polu tekstowym) → wcięcie pierwszego wiersza.
+    Reguła tabulatorów zamieniłaby go na spację, a początek akapitu jest przycinany, więc akapit traciłby wcięcie.
+    Wcięcie: najczęstsze w dokumencie albo 1,25 cm; akapit z własnym wcięciem pierwszego wiersza je zachowuje.
+    Nagłówki, punkty listy, akapity wyśrodkowane i do prawej, akapity bez tekstu po tabulatorze oraz początek
+    w śledzonej zmianie, polu lub przed odsyłaczem zostają bez zmian (tam tabulator obsługuje reguła tabulatorów).
+    Ze śledzeniem zmian (tracker) usunięcie tabulatora i wcięcie są zmianami do przejrzenia. `paragraphs` –
+    akapity treści głównej (Story 'body')."""
     from copy import deepcopy
     outline = document_outline(doc)
     candidates, indents = [], {}
-    for paragraph in doc.paragraphs:
+    for paragraph in paragraphs:
         try:
             values = paragraph_properties(paragraph, ('first_line_indent', 'alignment'))
         except ValueError:
@@ -2176,8 +2203,10 @@ def _tab_indents(doc, counts, tracker=None):
         for name in ('hanging', 'hangingChars', 'firstLineChars'):
             indent.attrib.pop(qn('w:' + name), None)
         indent.set(qn('w:firstLine'), str(width))
-    if counts is not None and candidates:
-        counts['tab_indents'] = counts.get('tab_indents', 0) + len(candidates)
+    # Kopia zapasowa pola tekstowego (mc:Fallback) jest poprawiana, ale nie liczona drugi raz.
+    counted = sum(not _in_fallback(paragraph._p) for paragraph, *_ in candidates)
+    if counts is not None and counted:
+        counts['tab_indents'] = counts.get('tab_indents', 0) + counted
 
 
 def _replacement_summary(pairs):
@@ -2208,7 +2237,7 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
     stories, commit = document_stories(doc)
     _replace_nonbreaking_spaces(stories, counts)
     tracker = _Tracker(doc) if track_changes else None
-    _tab_indents(doc, counts, tracker)
+    _tab_indents(doc, stories[0].paragraphs, counts, tracker)
     if not enabled:
         commit()
         _store_summary(summary, counts)

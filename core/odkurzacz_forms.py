@@ -132,6 +132,10 @@ class ProgramDocumentForm(ProgramForm):
         return validate_docx_upload(self.cleaned_data["document"])
 
 
+def soft_whitespace_field():
+    return forms.BooleanField(label="Usuń miękkie entery i spacje nieprzenoszące", required=False, initial=True)
+
+
 def dialog_lists_field():
     """Zamiana dialogów zapisanych jako lista punktowana (Odkurzacz, scalanie, konwerter) – domyślnie włączona."""
     return forms.BooleanField(
@@ -145,7 +149,7 @@ def dialog_lists_field():
 class CleanerOptionsForm(forms.Form):
     """Opcje Odkurzacza wspólne dla Odkurzacza i scalania DOCX."""
 
-    remove_soft_whitespace = forms.BooleanField(label="Usuń miękkie entery i spacje nieprzenoszące", required=False, initial=True)
+    remove_soft_whitespace = soft_whitespace_field()
     dialog_lists = dialog_lists_field()
     normalize_formatting = forms.BooleanField(label="Ujednolić formatowanie", required=False, initial=False)
     keep_page_format = forms.BooleanField(
@@ -170,14 +174,16 @@ class OdkurzaczForm(CleanerOptionsForm, ProgramDocumentForm):
 
 
 class DocumentConversionForm(ProgramDocumentForm):
-    # Miękkie entery usuwa Odkurzacz – w konwerterze działa to razem z „Użyj Odkurzacza”.
-    rules = rules_field('Reguły Odkurzacza')
+    # Opcje korekty jak w Odkurzaczu; reguły i miękkie entery działają razem z „Użyj Odkurzacza”.
+    rules = rules_field()
     formats = forms.MultipleChoiceField(
         label='Formaty docelowe', choices=(('pdf', 'PDF'), ('epub', 'EPUB')),
         widget=forms.CheckboxSelectMultiple, initial=['epub'],
         error_messages={'required': 'Wybierz co najmniej jeden format.'},
     )
-    use_cleaner = forms.BooleanField(label='Użyj Odkurzacza przed konwersją', required=False)
+    use_cleaner = forms.BooleanField(label='Użyj Odkurzacza przed konwersją', required=False, initial=True)
+    # Te same opcje korekty co w Odkurzaczu (działają razem z „Użyj Odkurzacza”).
+    remove_soft_whitespace = soft_whitespace_field()
     dialog_lists = dialog_lists_field()
     # Strona zawsze wysyła ten znacznik razem z listą reguł. Bez niego (starszy
     # formularz, wywołanie bez listy) Odkurzacz użyje reguł domyślnych.

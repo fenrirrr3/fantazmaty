@@ -129,6 +129,37 @@ class ProgramsPageLayoutTests(TestCase):
             for target in element.get('aria-describedby').split():
                 self.assertTrue(self.tree.get_element_by_id(target, None) is not None, target)
 
+    def test_correction_options_are_the_same_in_every_program(self):
+        """Odkurzacz, konwerter i scalanie: ta sama lista opcji korekty (miękkie entery i reguły) z tym samym
+        domyślnym zaznaczeniem (wyłączone tylko scalanie pustych akapitów), konwerter z Odkurzaczem domyślnie;
+        dłuższe opisy reguł są zwinięte pod „?”, a podpisy reguł są krótkie."""
+        from core.services.odkurzacz import RULE_DESCRIPTIONS
+        from fantazmaty.testing import create_superuser
+        self.client.force_login(create_superuser('opcje-korekty'))  # scalanie widzi tylko superuser
+        self.tree = html.fromstring(self.client.get(reverse('core:programs')).content.decode())
+
+        def grid(program):
+            group = css(self.tree, f'#program-{program} fieldset.program-rules')[0]
+            self.assertTrue(text_of(css(group, 'legend')[0]).startswith('Opcje korekty'))
+            boxes = css(group, '.odkurzacz-rules input[type=checkbox]')
+            return [(box.get('name').rsplit('-', 1)[-1], box.get('value'), box.get('checked') is not None)
+                    for box in boxes]
+
+        clean = grid('clean')
+        self.assertEqual(grid('convert'), clean)
+        self.assertEqual(grid('merge'), clean)
+        self.assertEqual([value for _, value, checked in clean if not checked], ['empty_paragraphs'])
+        self.assertEqual(clean[0], ('remove_soft_whitespace', None, True))
+        self.assertIsNotNone(self.tree.xpath('//input[@name="convert-use_cleaner"]')[0].get('checked'))
+        for program in ('clean', 'convert', 'merge'):
+            with self.subTest(program=program):
+                rules = css(self.tree, f'#program-{program} .odkurzacz-rules')[0]
+                tips = [text_of(css(tip, '.help-tip-body')[0]) for tip in css(rules, '.help-tip')]
+                self.assertEqual(len(tips), len(RULE_DESCRIPTIONS) + 1)  # + miękkie entery
+                self.assertIn('Tabulator na początku akapitu nie jest zamieniany na spację', ' '.join(tips))
+                self.assertTrue(all(len(text_of(label)) <= 70 for label in css(rules, 'label')))
+                self.assertFalse(rules.xpath('.//input[contains(@name, "remove_fonts")]'))
+
     def test_soft_whitespace_is_in_the_rule_group_with_select_all(self):
         group = css(self.tree, '#program-clean fieldset.program-rules')[0]
         self.assertTrue(text_of(css(group, 'legend')[0]).startswith('Opcje korekty'))

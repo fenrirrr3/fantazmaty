@@ -680,6 +680,7 @@ class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
             'convert-document': SimpleUploadedFile('tekst.docx', soft_whitespace_document()),
             'convert-formats': ['epub'],
             'convert-use_cleaner': 'on',
+            'convert-remove_soft_whitespace': 'on',
         })
         self.assertEqual(response.status_code, 200)
         with ZipFile(BytesIO(downloaded(response))) as archive:
@@ -1570,20 +1571,29 @@ class TabIndentTests(SimpleTestCase):
                                       (expected, None)])
                     self.assertEqual(summary['tab_indents'], 4)
 
-    def test_other_paragraphs_keep_their_tabs(self):
-        """Nagłówek, punkt listy, akapit wyśrodkowany, tabela i początek w śledzonej zmianie nie dostają wcięcia."""
+    def test_tables_and_text_boxes_too_but_not_headings_lists_or_centred_text(self):
+        """Tabela i pole tekstowe (kopia zapasowa liczona raz) dostają wcięcie; nagłówek, punkt listy, akapit
+        wyśrodkowany i początek w śledzonej zmianie zostają bez wcięcia."""
         document = Document()
         document.add_heading('\tRozdział', 1)
         document.add_paragraph('\tPunkt', style='List Bullet')
         document.add_paragraph('\tŚrodek').alignment = WD_ALIGN_PARAGRAPH.CENTER
         document.add_table(rows=1, cols=1).cell(0, 0).text = '\tKomórka'
+        add_text_box(document.add_paragraph('Akapit z polem.'), '&#9;W polu')
         inserted = document.add_paragraph()
         inserted._p.append(parse_xml(f'<w:ins {nsdecls("w")} w:id="9" w:author="R" w:date="2026-11-05T00:00:00Z">'
                                      '<w:r><w:tab/><w:t>Wstawione</w:t></w:r></w:ins>'))
         result, summary = self.indented(document, ())
-        self.assertNotIn('tab_indents', summary)
+        self.assertEqual(summary['tab_indents'], 2)
         self.assertTrue(all(self.first_line(p) is None or self.first_line(p)[0] is None for p in result.paragraphs))
         self.assertTrue(result.paragraphs[-1]._p.xpath('./w:ins/w:r/w:tab'))
+        cell = result.tables[0].cell(0, 0).paragraphs[0]
+        self.assertEqual((cell.text, self.first_line(cell)), ('Komórka', ('709', None)))
+        boxes = result.element.body.xpath('.//w:txbxContent/w:p')
+        self.assertEqual(len(boxes), 2)
+        for box in boxes:
+            self.assertEqual((box.xpath('./w:r/w:t/text()'), box.xpath('./w:r/w:tab'),
+                              box.find(f'{qn("w:pPr")}/{qn("w:ind")}').get(qn('w:firstLine'))), (['W polu'], [], '709'))
 
     def test_tracked_mode_marks_tab_removal_and_indent(self):
         """Ze śledzeniem zmian: usunięcie tabulatora i nowe wcięcie są zmianami – odrzucenie przywraca tabulator

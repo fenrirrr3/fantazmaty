@@ -112,7 +112,8 @@ def job_options(action, form, user=None):
             options['remove_fonts'] = data['remove_fonts']
     elif action == 'convert':
         options = dict(formats=data['formats'], use_cleaner=data['use_cleaner'], preserve_filename=True,
-                       remove_soft_whitespace=data['use_cleaner'], dialog_lists=data['dialog_lists'])
+                       remove_soft_whitespace=data['use_cleaner'] and data['remove_soft_whitespace'],
+                       dialog_lists=data['dialog_lists'])
         if data['use_cleaner']:
             options.update(cleaner_rules=data['rules'], replacements=ReplacementEntry.active_replacements())
     elif action == 'split':
