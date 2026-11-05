@@ -92,6 +92,16 @@ class StandaloneBundleTests(SimpleTestCase):
             self.assertTrue(coloured.element.body.xpath('.//w:color'))
             self.assertEqual(Document(results['Przebudowa'][0]).paragraphs[1].text, 'Drugi akapit z kotem.')
             self.assertTrue(progress)
+            # Dialogi zapisane jako lista (opcja domyślnie włączona): kwestie z myślnikiem i uwaga w Odkurzaczu.
+            from .test_dialog_lists import DIALOG, numbered_document
+            dialogs = Path(folder) / 'dialogi.docx'
+            dialogs.write_bytes(numbered_document(DIALOG))
+            self.assertIs(settings['dialog_lists'], True)
+            for program in ('Odkurzacz', 'Konwersja'):
+                result, notes = bundle.run_program(program, dialogs, settings, progress.append)
+                self.assertIn(bundle.dialog_lists_note({'dialogs': 3, 'merged': 0}), notes)
+            self.assertEqual(Document(Path(folder) / 'dialogi_odkurzony.docx').paragraphs[1].text,
+                             '– Dziwka – odezwała się kupa szmat.')
             # Ustawienia i czcionki trafiają do katalogu konfiguracji; słownik zamian ma format tekstowy.
             bundle.save_settings(settings)
             stored = json.loads((Path(folder) / 'config' / 'RedaktorDOCX' / 'ustawienia.json').read_text(encoding='utf-8'))

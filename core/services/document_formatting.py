@@ -147,6 +147,51 @@ def _previous_properties(owner, change, tag):
     return properties
 
 
+# Elementy na początku akapitu, które nie są tekstem (zakładki, zakresy komentarzy, znaczniki pisowni).
+TAB_SKIPPED = frozenset(qn('w:' + name) for name in (
+    'pPr', 'bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd', 'proofErr', 'permStart', 'permEnd'))
+
+
+def leading_tabs(paragraph):
+    """Tabulatory (i odstępy obok nich) przed pierwszym znakiem akapitu: lista (węzeł, nowy tekst albo None –
+    węzeł do usunięcia). Pusta, gdy akapit nie zaczyna się tabulatorem, nie ma po nim tekstu albo początek jest
+    w śledzonej zmianie, polu, hiperłączu, kontrolce lub przed obrazem czy odsyłaczem przypisu."""
+    edits, tab = [], False
+    for child in paragraph:
+        if child.tag in TAB_SKIPPED:
+            continue
+        if child.tag != qn('w:r'):
+            break
+        for node in child:
+            if node.tag in (qn('w:rPr'), qn('w:lastRenderedPageBreak')):
+                continue
+            if node.tag == qn('w:tab'):
+                edits.append((node, None))
+                tab = True
+                continue
+            if node.tag != qn('w:t'):
+                return []
+            text = node.text or ''
+            rest = text.lstrip(' \t')
+            if '\t' in text[:len(text) - len(rest)]:
+                tab = True
+            if text != rest:
+                edits.append((node, rest))
+            if rest:
+                return edits if tab else []
+    return []
+
+
+def remove_leading_tabs(edits):
+    """Zmiany z leading_tabs: tabulatory usunięte, tekst bez odstępów na początku."""
+    for node, text in edits:
+        if text is None:
+            node.getparent().remove(node)
+        else:
+            node.text = text
+            node.set(qn('xml:space'), 'preserve')
+
+
 def normalize_docx(source, *, justify=False):
     source.seek(0)
     document = Document(source)
@@ -195,7 +240,12 @@ def normalize_docx(source, *, justify=False):
                         before.append(deepcopy(previous))
                         before = Paragraph(before, document)
                         _normalize_paragraph(previous, _alignment(before), listed=keeps_indent(before._p), **options)
-                    _normalize_paragraph(props, _alignment(paragraph), listed=keeps_indent(element), **options)
+                    alignment = _alignment(paragraph)
+                    if name == 'word/document.xml' and not options['in_table'] and not keeps_indent(element) \
+                            and alignment not in (1, 2):
+                        # Tabulator na początku akapitu: wcięcie akapitowe ustawia ujednolicenie (jak w Odkurzaczu).
+                        remove_leading_tabs(leading_tabs(element))
+                    _normalize_paragraph(props, alignment, listed=keeps_indent(element), **options)
                     # Includes hyperlinks and runs inside other inline containers.
                     for run in element.iter(qn("w:r")):
                         rpr = run.get_or_add_rPr()

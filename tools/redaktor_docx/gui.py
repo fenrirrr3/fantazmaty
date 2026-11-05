@@ -54,7 +54,7 @@ def default_settings():
     return {
         'version': 2, 'last_directory': '', 'open_result': True, 'strip_images': True,
         'rules': {key: key in FORM_DEFAULT_EDITORIAL_RULES for key, _ in EDITORIAL_RULES},
-        'remove_soft_whitespace': True, 'normalize_formatting': False, 'justify': False,
+        'remove_soft_whitespace': True, 'dialog_lists': True, 'normalize_formatting': False, 'justify': False,
         'track_changes': False, 'replacements': replacements_text(DEFAULT_REPLACEMENTS),
         'formats': {'pdf': True, 'epub': True}, 'convert_clean': True, 'convert_rebuild': False,
         'window_size': WINDOW_SIZE, 'min_word_length': MIN_WORD_LENGTH, 'include_prefix_matches': False,
@@ -179,13 +179,16 @@ def run_program(program, source, settings, progress):
             target = source.with_name(source.stem + '_przebudowa.docx')
             target.write_bytes(result.getvalue())
             return target, notes
+        dialogs = {}
         if program == 'Odkurzacz':
             summary = {}
             result = prepare_docx(
                 payload, normalize_formatting=settings['normalize_formatting'], justify=settings['justify'],
                 remove_soft_whitespace=settings['remove_soft_whitespace'], cleaner_rules=rules, use_cleaner=True,
                 track_changes=settings['track_changes'], replacements=parse_replacements(settings['replacements']),
-                summary=summary)
+                summary=summary, dialog_lists=settings['dialog_lists'], dialog_report=dialogs)
+            if dialogs.get('dialogs'):
+                notes.append(dialog_lists_note(dialogs))
             target = source.with_name(source.stem + '_odkurzony.docx')
             target.write_bytes(result.getvalue())
             pairs = summary.pop('replacements', None)
@@ -204,7 +207,10 @@ def run_program(program, source, settings, progress):
                 normalize_formatting=True, justify=settings['justify'],
                 remove_soft_whitespace=settings['remove_soft_whitespace'],
                 cleaner_rules=rules if settings['convert_clean'] else (), use_cleaner=settings['convert_clean'],
-                replacements=parse_replacements(settings['replacements']))
+                replacements=parse_replacements(settings['replacements']), dialog_lists=settings['dialog_lists'],
+                dialog_report=dialogs)
+            if dialogs.get('dialogs'):
+                notes.append(dialog_lists_note(dialogs))
             with tempfile.TemporaryDirectory(prefix='redaktor-docx-') as folder:
                 directory = Path(folder)
                 work = directory / 'source.docx'
@@ -312,7 +318,8 @@ def launch_gui():
     options = ttk.Frame(inner)
     options.grid(row=1, column=0, sticky='w', pady=8)
     for column, (key, label) in enumerate((
-            ('remove_soft_whitespace', 'Usuń miękkie entery'), ('normalize_formatting', 'Ujednolić formatowanie'),
+            ('remove_soft_whitespace', 'Usuń miękkie entery'), ('dialog_lists', 'Popraw dialogi z listy punktowanej'),
+            ('normalize_formatting', 'Ujednolić formatowanie'),
             ('justify', 'Wyjustuj'), ('track_changes', 'Pobierz z zaznaczonymi zmianami'))):
         variables[key] = tk.BooleanVar(value=settings[key])
         ttk.Checkbutton(options, text=label, variable=variables[key]).grid(row=0, column=column, padx=(0, 14))

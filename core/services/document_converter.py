@@ -399,6 +399,7 @@ def convert_document(
     replacements=None,
     keep_page_format=False,
     remove_fonts=False,
+    dialog_lists=False,
     analysis_unlimited=False,
     control=None,
     wait_for_slot=0,
@@ -438,6 +439,7 @@ def convert_document(
                     "replacements": replacements,
                     "keep_page_format": bool(keep_page_format),
                     "remove_fonts": bool(remove_fonts),
+                    "dialog_lists": bool(dialog_lists),
                     "analysis_unlimited": bool(analysis_unlimited),
                 },
             )

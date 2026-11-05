@@ -466,19 +466,22 @@ class PackagingErrorTests(SimpleTestCase):
 
     @patch('core.services.mailbox_import.convert_document')
     def test_processed_documents_lose_embedded_fonts(self, convert):
-        """Każde przetworzenie DOCX ze skrzynki (Odkurzacz, konwersja, przebudowa) usuwa osadzone czcionki,
-        a z Odkurzaczem także zamienia miękkie entery; bez przetwarzania zapisujemy oryginał bez zmian."""
+        """Każde przetworzenie DOCX ze skrzynki (Odkurzacz, konwersja, przebudowa) usuwa osadzone czcionki
+        i poprawia dialogi zapisane jako lista, a z Odkurzaczem także zamienia miękkie entery; bez przetwarzania
+        zapisujemy oryginał bez zmian."""
         convert.side_effect = lambda *args, **kwargs: (BytesIO(b'przetworzony'), None, None)
         for options in ((True, False, False), (False, False, True)):
             with self.subTest(options=options):
                 convert.reset_mock()
                 _package_messages([self.message()], *options, True)
                 self.assertIs(convert.call_args.kwargs['remove_fonts'], True)
+                self.assertIs(convert.call_args.kwargs['dialog_lists'], True)
                 # Miękkie entery – tylko z Odkurzaczem (pierwsza opcja).
                 self.assertIs(convert.call_args.kwargs['remove_soft_whitespace'], options[0])
         convert.side_effect = lambda *args, **kwargs: converted()
         _package_messages([self.message()], False, True, False)
         self.assertIs(convert.call_args.kwargs['remove_fonts'], True)
+        self.assertIs(convert.call_args.kwargs['dialog_lists'], True)
         convert.reset_mock()
         _package_messages([self.message()], False, False, False)
         convert.assert_not_called()

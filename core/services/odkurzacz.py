@@ -10,13 +10,15 @@ if __package__:
     from .document_errors import DocumentInputError
     from .document_progress import report as report_progress
     from .document_stories import document_stories
-    from .document_styles import document_outline
+    from .document_formatting import _child as schema_child, leading_tabs, remove_leading_tabs
+    from .document_styles import document_outline, paragraph_properties
     from .document_xml import FALLBACK
 else:
     from document_errors import DocumentInputError
     from document_progress import report as report_progress
     from document_stories import document_stories
-    from document_styles import document_outline
+    from document_formatting import _child as schema_child, leading_tabs, remove_leading_tabs
+    from document_styles import document_outline, paragraph_properties
     from document_xml import FALLBACK
 
 # Reguły są wykonywane w ustalonej kolejności, niezależnie od kolejności kliknięć.
@@ -77,9 +79,10 @@ EDITORIAL_RULES += ORTHOGRAPHY_2026_RULES + (
     ('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
     ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'))
 ALL_EDITORIAL_RULES = frozenset(key for key, _ in EDITORIAL_RULES)
-# Podpisy liczników podsumowania zmian: reguły i cichy krok _replace_nonbreaking_spaces.
+# Podpisy liczników podsumowania zmian: reguły i ciche kroki _replace_nonbreaking_spaces i _tab_indents.
 SUMMARY_LABELS = {**dict(EDITORIAL_RULES),
-                  'nonbreaking_spaces': 'Spacje nierozdzielające i nietypowe zamienione na zwykłe'}
+                  'nonbreaking_spaces': 'Spacje nierozdzielające i nietypowe zamienione na zwykłe',
+                  'tab_indents': 'Tabulatory na początku akapitu zamienione na wcięcie akapitowe'}
 DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'pronouns_lower', 'user_word_corrections', 'empty_paragraphs'}
 # Formularz Odkurzacza zaznacza domyślnie także zaimki i zamiany słownikowe;
 # DEFAULT_EDITORIAL_RULES (bez nich) pozostaje dla automatycznego czyszczenia zgłoszeń.
@@ -2109,6 +2112,74 @@ def _replace_nonbreaking_spaces(stories, counts):
         counts['nonbreaking_spaces'] = counts.get('nonbreaking_spaces', 0) + replaced
 
 
+# Wcięcie akapitowe zamiast tabulatora, gdy dokument nie ma żadnego wcięcia pierwszego wiersza: 1,25 cm.
+TAB_INDENT_TWIPS = 709
+def _tracked_tab_removal(edits, tracker):
+    """Usunięcie tabulatorów z początku akapitu jako śledzone usunięcie (odrzucenie zmian przywraca tabulator)."""
+    from copy import deepcopy
+    for node, text in edits:
+        run = node.getparent()
+        removed = '\t' if text is None else (node.text or '')[:len(node.text or '') - len(text)]
+        deletion = tracker.mark('w:del')
+        deleted = OxmlElement('w:r')
+        properties = run.find(qn('w:rPr'))
+        if properties is not None:
+            deleted.append(deepcopy(properties))
+        _append_text(deleted, removed, deleted=True)
+        deletion.append(deleted)
+        run.addprevious(deletion)
+    remove_leading_tabs(edits)
+
+
+def _tab_indents(doc, counts, tracker=None):
+    """Tabulator na początku akapitu treści → wcięcie pierwszego wiersza. Reguła tabulatorów zamieniłaby go na
+    spację, a początek akapitu jest przycinany, więc akapit traciłby wcięcie. Wcięcie: najczęstsze w dokumencie
+    albo 1,25 cm; akapit z własnym wcięciem pierwszego wiersza je zachowuje. Nagłówki, punkty listy, akapity
+    wyśrodkowane i do prawej, tabele, akapity bez tekstu po tabulatorze oraz początek w śledzonej zmianie zostają
+    bez zmian. Ze śledzeniem zmian (tracker) usunięcie tabulatora i wcięcie są zmianami do przejrzenia."""
+    from copy import deepcopy
+    outline = document_outline(doc)
+    candidates, indents = [], {}
+    for paragraph in doc.paragraphs:
+        try:
+            values = paragraph_properties(paragraph, ('first_line_indent', 'alignment'))
+        except ValueError:
+            continue  # nieznana wartość wyrównania lub wcięcia (uszkodzony plik) – akapit bez zmian
+        first = values['first_line_indent'] or 0
+        if first > 0 and paragraph.text.strip():
+            indents[first.twips] = indents.get(first.twips, 0) + 1
+        if outline.heading_level(paragraph._p) is not None or outline.is_list_item(paragraph._p) \
+                or values['alignment'] in (1, 2):
+            continue
+        edits = leading_tabs(paragraph._p)
+        if edits:
+            candidates.append((paragraph, edits, first))
+    width = max(indents, key=lambda value: (indents[value], value)) if indents else TAB_INDENT_TWIPS
+    for paragraph, edits, first in candidates:
+        if tracker is not None:
+            _tracked_tab_removal(edits, tracker)
+        else:
+            remove_leading_tabs(edits)
+        if first > 0:
+            continue
+        properties = paragraph._p.get_or_add_pPr()
+        if tracker is not None and properties.find(qn('w:pPrChange')) is None:
+            previous = deepcopy(properties)
+            for child in list(previous):
+                if child.tag in (qn('w:rPr'), qn('w:sectPr'), qn('w:pPrChange')):
+                    previous.remove(child)
+            schema_child(properties, 'w:pPrChange').append(previous)
+            change = properties.find(qn('w:pPrChange'))
+            for name, value in tracker.mark('w:pPrChange').attrib.items():
+                change.set(name, value)
+        indent = schema_child(properties, 'w:ind')
+        for name in ('hanging', 'hangingChars', 'firstLineChars'):
+            indent.attrib.pop(qn('w:' + name), None)
+        indent.set(qn('w:firstLine'), str(width))
+    if counts is not None and candidates:
+        counts['tab_indents'] = counts.get('tab_indents', 0) + len(candidates)
+
+
 def _replacement_summary(pairs):
     rows = [{'source': source, 'target': target, 'count': count} for (source, target), count in pairs.items()]
     return sorted(rows, key=lambda row: (-row['count'], row['source'].lower(), row['source'], row['target']))
@@ -2136,12 +2207,13 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
     # Treść, tabele, pola tekstowe, nagłówki, stopki i przypisy.
     stories, commit = document_stories(doc)
     _replace_nonbreaking_spaces(stories, counts)
+    tracker = _Tracker(doc) if track_changes else None
+    _tab_indents(doc, counts, tracker)
     if not enabled:
         commit()
         _store_summary(summary, counts)
         return
     compiled = compile_replacements(replacements) if 'user_word_corrections' in enabled else None
-    tracker = _Tracker(doc) if track_changes else None
     field_depth = 0
     paragraphs = [(number, para) for number, story in enumerate(stories) for para in story.paragraphs]
     current_story = 0

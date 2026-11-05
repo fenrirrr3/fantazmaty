@@ -104,7 +104,7 @@ def job_options(action, form, user=None):
                        allow_rebuild_omissions=False, use_cleaner=True,
                        cleaner_rules=data['rules'], remove_soft_whitespace=data['remove_soft_whitespace'],
                        track_changes=data['track_changes'], cleaner_summary=data['cleaner_summary'],
-                       keep_page_format=rebuild and data['keep_page_format'],
+                       keep_page_format=rebuild and data['keep_page_format'], dialog_lists=data['dialog_lists'],
                        replacements=ReplacementEntry.active_replacements())
         if action == 'merge':
             options['use_template'] = data['use_template']
@@ -112,7 +112,7 @@ def job_options(action, form, user=None):
             options['remove_fonts'] = data['remove_fonts']
     elif action == 'convert':
         options = dict(formats=data['formats'], use_cleaner=data['use_cleaner'], preserve_filename=True,
-                       remove_soft_whitespace=data['use_cleaner'])
+                       remove_soft_whitespace=data['use_cleaner'], dialog_lists=data['dialog_lists'])
         if data['use_cleaner']:
             options.update(cleaner_rules=data['rules'], replacements=ReplacementEntry.active_replacements())
     elif action == 'split':

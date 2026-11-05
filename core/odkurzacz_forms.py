@@ -132,10 +132,21 @@ class ProgramDocumentForm(ProgramForm):
         return validate_docx_upload(self.cleaned_data["document"])
 
 
+def dialog_lists_field():
+    """Zamiana dialogów zapisanych jako lista punktowana (Odkurzacz, scalanie, konwerter) – domyślnie włączona."""
+    return forms.BooleanField(
+        label="Popraw dialogi zapisane jako lista punktowana", required=False, initial=True,
+        help_text="Działa tylko wtedy, gdy program wykryje w tekście kwestie dialogowe zapisane jako punkty listy "
+                  "z kreską (tak robi Autoformatowanie Worda po wpisaniu „- ” na początku akapitu). Takie punkty "
+                  "stają się zwykłymi akapitami z myślnikiem dialogowym, a urwane w pół zdania wiersze kwestii "
+                  "(np. tekst wklejony z PDF-u) są do nich dołączane. Zwykłe listy zostają bez zmian.")
+
+
 class CleanerOptionsForm(forms.Form):
     """Opcje Odkurzacza wspólne dla Odkurzacza i scalania DOCX."""
 
     remove_soft_whitespace = forms.BooleanField(label="Usuń miękkie entery i spacje nieprzenoszące", required=False, initial=True)
+    dialog_lists = dialog_lists_field()
     normalize_formatting = forms.BooleanField(label="Ujednolić formatowanie", required=False, initial=False)
     keep_page_format = forms.BooleanField(
         label="Przy przebudowie zachowaj format strony", required=False, initial=False,
@@ -167,6 +178,7 @@ class DocumentConversionForm(ProgramDocumentForm):
         error_messages={'required': 'Wybierz co najmniej jeden format.'},
     )
     use_cleaner = forms.BooleanField(label='Użyj Odkurzacza przed konwersją', required=False)
+    dialog_lists = dialog_lists_field()
     # Strona zawsze wysyła ten znacznik razem z listą reguł. Bez niego (starszy
     # formularz, wywołanie bez listy) Odkurzacz użyje reguł domyślnych.
     rules_shown = forms.BooleanField(required=False, initial=True, widget=forms.HiddenInput)

@@ -7,12 +7,14 @@ from io import BytesIO
 
 if __package__:
     from .document_progress import report
+    from .document_dialog_lists import dialog_lists_docx
     from .document_rebuild import rebuild_docx
     from .document_formatting import normalize_docx
     from .document_whitespace import normalize_spacing_docx
     from .odkurzacz import clean_docx, ALL_EDITORIAL_RULES
 else:
     from document_progress import report
+    from document_dialog_lists import dialog_lists_docx
     from document_rebuild import rebuild_docx
     from document_formatting import normalize_docx
     from document_whitespace import normalize_spacing_docx
@@ -42,11 +44,13 @@ def _valid_replacements(replacements):
 
 def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
                  cleaner_rules=(), allow_omissions=False, use_cleaner=False, justify=False, remove_soft_whitespace=False,
-                 track_changes=False, replacements=None, summary=None, keep_page_format=False):
+                 track_changes=False, replacements=None, summary=None, keep_page_format=False,
+                 dialog_lists=False, dialog_report=None):
     """Kolejne kroki przygotowania DOCX.
 
     track_changes, replacements i summary trafiają do Odkurzacza (clean_docx),
-    keep_page_format do przebudowy.
+    keep_page_format do przebudowy. dialog_lists zamienia dialogi zapisane jako lista punktowana (tylko gdy
+    dokument wygląda na taki przypadek); dialog_report (słownik) dostaje liczby zamian.
     """
     if not isinstance(cleaner_rules, (list, tuple)) or set(cleaner_rules) - set(ALL_EDITORIAL_RULES):
         raise ValueError('Invalid cleaner rules')
@@ -61,6 +65,10 @@ def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
     # widzą już osobne akapity).
     if remove_soft_whitespace:
         steps.append((normalize_spacing_docx, {}))
+    # Dialogi z listy – przed przebudową (która zachowuje punkty listy) i przed Odkurzaczem (reguły kwestii
+    # dialogowych widzą już myślnik na początku akapitu) oraz ujednoliceniem (wcięcie zwykłego akapitu).
+    if dialog_lists:
+        steps.append((dialog_lists_docx, {'report': dialog_report}))
     if rebuild:
         steps.append((rebuild_docx, {'allow_omissions': allow_omissions, 'keep_page_format': bool(keep_page_format)}))
     if normalize_formatting:
@@ -70,7 +78,8 @@ def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
                                    'replacements': replacements, 'summary': summary}))
     for operation, options in steps:
         report({'rebuild_docx': 'Przebudowa DOCX', 'normalize_docx': 'Ujednolicanie formatowania',
-                'clean_docx': 'Odkurzanie tekstu', 'normalize_spacing_docx': 'Zamiana miękkich enterów i spacji'}.get(getattr(operation, '__name__', ''), 'Przygotowanie DOCX'))
+                'clean_docx': 'Odkurzanie tekstu', 'normalize_spacing_docx': 'Zamiana miękkich enterów i spacji',
+                'dialog_lists_docx': 'Dialogi zapisane jako lista'}.get(getattr(operation, '__name__', ''), 'Przygotowanie DOCX'))
         with operation(BytesIO(payload), **options) as result:
             payload = result.read()
     return BytesIO(payload)

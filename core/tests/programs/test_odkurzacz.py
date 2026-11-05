@@ -84,12 +84,15 @@ class CleanDocxTests(SimpleTestCase):
             clean_docx(BytesIO(docx_bytes('a' * 20001)), ['spaces'])
 
     def test_tabs_are_replaced_with_single_spaces(self):
+        """Tabulatory w akapicie → spacja; tabulator na początku akapitu zawsze daje wcięcie akapitowe."""
         text = '\tAla\tma \t kota\t\t'
         result = Document(clean_docx(BytesIO(docx_bytes(text)), ['tabs']))
-        self.assertEqual(result.paragraphs[0].text, ' Ala ma kota ')
+        self.assertEqual(result.paragraphs[0].text, 'Ala ma kota ')
         self.assertFalse(result.paragraphs[0]._p.xpath('.//w:tab'))
         unchanged = Document(clean_docx(BytesIO(docx_bytes(text)), []))
-        self.assertEqual(unchanged.paragraphs[0].text, text)
+        self.assertEqual(unchanged.paragraphs[0].text, text[1:])
+        for document in (result, unchanged):
+            self.assertGreater(document.paragraphs[0].paragraph_format.first_line_indent, 0)
 
     def test_dialogue_spaces_survive_internal_docx_markers(self):
         """Regresja: znaczniki proofErr/bookmark między przebiegami gubiły spację przed półpauzą."""
@@ -405,7 +408,8 @@ class CleanerSummaryTests(SimpleTestCase):
         self.assertEqual(summary['ellipsis'], 5)  # akapit, tabela, pole tekstowe (kopia zapasowa liczona raz), stopka, przypis
         self.assertEqual(summary.pop('replacements'), [{'source': 'karnistrami', 'target': 'kanistrami', 'count': 1}])
         self.assertTrue(all(value > 0 for value in summary.values()))
-        self.assertLessEqual(set(summary), set(rules))
+        # Poza regułami: cichy krok wcięcia akapitowego zamiast tabulatora na początku akapitu.
+        self.assertLessEqual(set(summary), set(rules) | {'tab_indents'})
 
     def test_counts_for_simple_text(self):
         summary = {}
@@ -1520,3 +1524,91 @@ class CleanDocxUnusualRunsTests(SimpleTestCase):
         # Akapit z dopisanym tekstem nie jest pusty i przerywa serię.
         self.assertEqual(paragraphs[4]._p.xpath('.//w:del'), [])
         self.assertEqual(len(paragraphs), 6)
+
+
+@tag('docx')
+class TabIndentTests(SimpleTestCase):
+    """Tabulator na początku akapitu → wcięcie akapitowe (zawsze, także bez reguł i ze śledzeniem zmian)."""
+
+    def indented(self, document, rules=DEFAULT_EDITORIAL_RULES, **options):
+        summary = {}
+        result = Document(clean_docx(saved(document), rules, summary=summary, **options))
+        return result, summary
+
+    @staticmethod
+    def first_line(paragraph):
+        node = paragraph._p.find(f'{qn("w:pPr")}/{qn("w:ind")}')
+        return None if node is None else (node.get(qn('w:firstLine')), node.get(qn('w:hanging')))
+
+    def test_leading_tab_becomes_first_line_indent(self):
+        """Wcięcie najczęstsze w dokumencie (bez niego 1,25 cm); tabulatory i odstępy przed tekstem znikają,
+        tabulator w środku akapitu zostaje dla reguły tabulatorów; akapit z własnym wcięciem je zachowuje,
+        a wcięcie wiszące ustępuje zwykłemu."""
+        for name, common, expected in (('wcięcie dokumentu', '720', '720'), ('bez wcięć w dokumencie', None, '709')):
+            with self.subTest(name):
+                document = Document()
+                if common:
+                    for text in ('Narracja.', 'Dalej.'):
+                        document.add_paragraph(text).paragraph_format.first_line_indent = 457200
+                tab = document.add_paragraph()
+                tab.add_run().add_tab()
+                tab.add_run('Strzepnął\tpopiół.')
+                document.add_paragraph(' \t\t Odprowadzany wzrokiem.')
+                own = document.add_paragraph('\tWłasne wcięcie.')
+                if common:
+                    own.paragraph_format.first_line_indent = 360045
+                hanging = document.add_paragraph('\tWiszące.')
+                hanging._p.get_or_add_pPr().append(parse_xml(f'<w:ind {nsdecls("w")} w:left="0" w:hanging="360"/>'))
+                for rules in (DEFAULT_EDITORIAL_RULES, ()):
+                    result, summary = self.indented(document, rules)
+                    paragraphs = result.paragraphs[len(result.paragraphs) - 4:]
+                    self.assertEqual([p.text for p in paragraphs][:2],
+                                     ['Strzepnął popiół.' if rules else 'Strzepnął\tpopiół.',
+                                      'Odprowadzany wzrokiem.'])
+                    self.assertEqual([self.first_line(p) for p in paragraphs],
+                                     [(expected, None), (expected, None), ('567' if common else expected, None),
+                                      (expected, None)])
+                    self.assertEqual(summary['tab_indents'], 4)
+
+    def test_other_paragraphs_keep_their_tabs(self):
+        """Nagłówek, punkt listy, akapit wyśrodkowany, tabela i początek w śledzonej zmianie nie dostają wcięcia."""
+        document = Document()
+        document.add_heading('\tRozdział', 1)
+        document.add_paragraph('\tPunkt', style='List Bullet')
+        document.add_paragraph('\tŚrodek').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        document.add_table(rows=1, cols=1).cell(0, 0).text = '\tKomórka'
+        inserted = document.add_paragraph()
+        inserted._p.append(parse_xml(f'<w:ins {nsdecls("w")} w:id="9" w:author="R" w:date="2026-11-05T00:00:00Z">'
+                                     '<w:r><w:tab/><w:t>Wstawione</w:t></w:r></w:ins>'))
+        result, summary = self.indented(document, ())
+        self.assertNotIn('tab_indents', summary)
+        self.assertTrue(all(self.first_line(p) is None or self.first_line(p)[0] is None for p in result.paragraphs))
+        self.assertTrue(result.paragraphs[-1]._p.xpath('./w:ins/w:r/w:tab'))
+
+    def test_tracked_mode_marks_tab_removal_and_indent(self):
+        """Ze śledzeniem zmian: usunięcie tabulatora i nowe wcięcie są zmianami – odrzucenie przywraca tabulator
+        i dawny układ akapitu, przyjęcie daje wcięcie bez tabulatora."""
+        document = Document()
+        document.add_paragraph('\t \tTekst  z  odstępami.')
+        result = clean_docx(saved(document), DEFAULT_EDITORIAL_RULES, track_changes=True)
+        self.assertEqual(_story_texts(result, 'accept')[0], ['Tekst z odstępami.'])
+        self.assertEqual(_story_texts(result, 'reject')[0], ['\t \tTekst  z  odstępami.'])
+        paragraph = Document(BytesIO(result.getvalue())).paragraphs[0]
+        self.assertEqual(self.first_line(paragraph), ('709', None))
+        change = paragraph._p.find(f'{qn("w:pPr")}/{qn("w:pPrChange")}')
+        self.assertEqual((change.get(qn('w:author')), change.find(f'{qn("w:pPr")}/{qn("w:ind")}')), ('Odkurzacz', None))
+
+    def test_normalized_formatting_drops_leading_tab(self):
+        """Ujednolicenie formatowania (konwerter, Odkurzacz z opcją) daje wcięcie 1,25 cm, więc tabulator na
+        początku akapitu treści znika; w tabeli i w akapicie wyśrodkowanym zostaje."""
+        from core.services.document_formatting import normalize_docx
+        document = Document()
+        paragraph = document.add_paragraph()
+        paragraph.add_run().add_tab()
+        paragraph.add_run('Strzepnął popiół.')
+        document.add_paragraph('\tŚrodek').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        document.add_table(rows=1, cols=1).cell(0, 0).text = '\tKomórka'
+        result = Document(normalize_docx(saved(document)))
+        self.assertEqual([p.text for p in result.paragraphs], ['Strzepnął popiół.', '\tŚrodek'])
+        self.assertEqual(self.first_line(result.paragraphs[0])[0], '709')
+        self.assertEqual(result.tables[0].cell(0, 0).text, '\tKomórka')

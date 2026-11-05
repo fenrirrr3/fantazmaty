@@ -1,0 +1,11 @@
+{# Opcja „Popraw dialogi zapisane jako lista punktowana” (Odkurzacz, konwerter, scalanie). Parametr: field. #}
+<div class="program-check">
+    <label for="{{ field.id_for_label }}">{{ field }} <span>{{ field.label }}</span></label>
+    <details class="help-tip"><summary aria-label="Pomoc: {{ field.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
+        <div class="help-tip-body" id="{{ field.auto_id }}_helptext">
+            <p>{{ field.help_text }}</p>
+            <p>Liczbę poprawionych kwestii zobaczysz w uwagach po zakończeniu pracy. Zmiana nie jest oznaczana jako śledzona.</p>
+        </div>
+    </details>
+</div>
+{{ field.errors }}

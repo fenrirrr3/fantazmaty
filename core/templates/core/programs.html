@@ -62,6 +62,7 @@
                 </details>
             </div>
             {{ form.track_changes.errors }}{{ form.cleaner_summary.errors }}
+            {% include "core/includes/program_dialog_lists.html" with field=form.dialog_lists %}
         </div>
 
         <fieldset class="program-rules">
@@ -72,7 +73,7 @@
                         <p>Domyślnie wyłączone jest tylko scalanie pustych akapitów (na końcu listy). Pozostałe poprawki możesz wyłączyć według potrzeb.</p>
                         <p>Reguły działają automatycznie – po pobraniu przejrzyj wynik, szczególnie zamiany słownikowe i wielkość liter.</p>
                         <p>Reguły „Ortografia 2026” stosują zasady pisowni obowiązujące od 1 stycznia 2026 r. (np. nienajlepszy, czy by, nibyartysta, pół-Polak). Zmieniają tylko zapisy jednoznaczne – sporne zostają bez zmian, np. przeciwstawienie („nie lepszy, lecz gorszy”), pytanie („Czy to nie najlepszy pomysł?”), miara i czas („nie dalej niż”, „nie później niż”) oraz „pół” ilościowe (pół godziny).</p>
-                        <p>Spacje twarde, wąskie, półfiretowe i inne nietypowe zawsze stają się zwykłymi spacjami, także przy wyłączonych regułach. Pauzę, pauzę cyfrową, kreskę poziomą i minus zamienia na półpauzę, a łączniki Unicode na zwykły dywiz reguła kresek (minus przed liczbą zostaje przy niej: –5 °C).</p>
+                        <p>Spacje twarde, wąskie, półfiretowe i inne nietypowe zawsze stają się zwykłymi spacjami, także przy wyłączonych regułach. Tabulator na początku akapitu zawsze staje się wcięciem akapitowym (takim jak w reszcie tekstu, bez niego 1,25 cm). Pauzę, pauzę cyfrową, kreskę poziomą i minus zamienia na półpauzę, a łączniki Unicode na zwykły dywiz reguła kresek (minus przed liczbą zostaje przy niej: –5 °C).</p>
                         <p>Pozycje własnych zamian słownikowych są w słowniku zamian{% if can_edit_replacements %} – możesz je tam zmieniać{% endif %}.</p>
                     </div>
                 </details>
@@ -176,6 +177,7 @@
                 </details>
             </div>
             {{ conversion_form.use_cleaner.errors }}
+            {% include "core/includes/program_dialog_lists.html" with field=conversion_form.dialog_lists %}
         </div>
         <fieldset class="program-rules program-suboption" data-requires="{{ conversion_form.use_cleaner.html_name }}">
             <legend>{{ conversion_form.rules.label }}</legend>
@@ -343,6 +345,7 @@
                 </details>
             </div>
             {{ merge_form.track_changes.errors }}{{ merge_form.cleaner_summary.errors }}{{ merge_form.use_template.errors }}
+            {% include "core/includes/program_dialog_lists.html" with field=merge_form.dialog_lists %}
         </div>
 
         <fieldset class="program-rules">

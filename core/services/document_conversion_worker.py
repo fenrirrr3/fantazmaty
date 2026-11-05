@@ -296,7 +296,8 @@ def convert(source, directory, formats, title):
     )
     if any(message.type == "error" for message in result.messages):
         raise ValueError("Document could not be read completely")
-    warnings = notes + polish_warnings(
+    earlier = directory / "warnings.json"
+    warnings = (json.loads(earlier.read_text(encoding="utf-8")) if earlier.is_file() else []) + notes + polish_warnings(
         str(message.message)[:500] for message in result.messages if message.type == "warning"
     )
     content = sanitize_html(result.value, assets)
@@ -384,6 +385,15 @@ def convert(source, directory, formats, title):
         (directory / "warnings.json").write_text(json.dumps(warnings[:30]), encoding="utf-8")
 
 
+def dialog_lists_note(dialogs):
+    """Uwaga o dialogach zamienionych z listy punktowanej (liczby z dialog_lists_docx)."""
+    note = ("Dialogi zapisane jako lista punktowana zamieniono na akapity z myślnikiem dialogowym "
+            f"(kwestie: {dialogs['dialogs']}")
+    if dialogs.get("merged"):
+        note += f", dołączone urwane wiersze: {dialogs['merged']}"
+    return note + ")."
+
+
 def _unlink_images(source):
     """Usuwa połączenia obrazów z plikami zewnętrznymi w pliku `source` (w miejscu); zwraca liczbę
     usuniętych obrazów tylko połączonych. Nic nie jest pobierane spoza dokumentu."""
@@ -453,6 +463,7 @@ def main():
                 rules = list(DEFAULT_EDITORIAL_RULES)
             # Podsumowanie zmian Odkurzacza: {reguła: liczba zmian}, zapisywane w summary.json.
             summary = {} if config.get("cleaner_summary") else None
+            dialogs = {}
             with (
                 source.open("rb") as document,
                 prepare_docx(
@@ -468,10 +479,15 @@ def main():
                     replacements=config.get("replacements"),
                     summary=summary,
                     keep_page_format=keep_page_format,
+                    dialog_lists=bool(config.get("dialog_lists", False)),
+                    dialog_report=dialogs,
                 ) as prepared,
             ):
                 payload = prepared.read()
             source.write_bytes(payload)
+            if dialogs.get("dialogs"):
+                # Uwaga na stronie zadania; konwersja (convert) dopisuje do niej swoje uwagi.
+                (directory / "warnings.json").write_text(json.dumps([dialog_lists_note(dialogs)]), encoding="utf-8")
             if summary is not None:
                 if isinstance(summary.get("replacements"), list):
                     # Lista zamian słownikowych (co na co) – najczęstsze pozycje, plik ma limit wielkości.

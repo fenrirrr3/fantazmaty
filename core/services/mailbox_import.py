@@ -582,6 +582,8 @@ def _package_messages(
                                 remove_fonts=True,
                                 # Miękkie entery jak w Odkurzaczu: nowe akapity, poza punktami list i nagłówkami.
                                 remove_soft_whitespace=True,
+                                # Dialogi zapisane jako lista punktowana – tylko gdy wykryte w tekście.
+                                dialog_lists=True,
                                 timeout=deadline - time.monotonic(),
                                 wait_for_slot=min(30, max(0, deadline - time.monotonic())),
                             )
@@ -597,6 +599,7 @@ def _package_messages(
                                 ["pdf", "epub"] if convert else [],
                                 use_cleaner=clean,
                                 remove_soft_whitespace=clean,
+                                dialog_lists=True,
                                 timeout=deadline - time.monotonic(),
                                 wait_for_slot=min(30, max(0, deadline - time.monotonic())),
                                 include_docx=True,
