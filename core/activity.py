@@ -28,6 +28,8 @@ LABELS = {
     'anthology_corrections': 'Uwagi do antologii', 'correction_edit': 'Edycja uwagi', 'correction_delete': 'Usunięcie uwagi',
     'review_create': 'Dodanie zgłoszenia', 'review_bulk_submit': 'Import zbiorczy zgłoszeń',
     'user_activity': 'Aktywność użytkowników', 'login': 'Logowanie', 'logout': 'Wylogowanie',
+    'secret_santa': 'Mikołajki – zapisy', 'secret_santa_confirm': 'Mikołajki – potwierdzenie zgłoszenia',
+    'secret_santa_entry': 'Mikołajki – moje zgłoszenie',
     'external_audiobooks': 'Zewnętrzne audiobooki', 'audiobook_guidelines_pdf': 'Pobranie wytycznych audiobooków',
     'audiobook_guidelines_txt': 'Pobranie wytycznych audiobooków (dawny adres TXT)',
     'external_illustrations': 'Zewnętrzne ilustracje', 'illustration_guidelines_pdf': 'Pobranie wytycznych ilustracji', 'recruitment_delete': 'Usunięcie zgłoszenia rekrutacyjnego',

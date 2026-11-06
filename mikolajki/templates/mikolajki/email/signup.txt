@@ -1,0 +1,13 @@
+{% autoescape off %}Dzień dobry,
+
+dziękujemy za zapis na {{ edition }} Fantazmatów! Potwierdź zgłoszenie, klikając link:
+{{ confirm_url }}
+
+Bez potwierdzenia zgłoszenie nie weźmie udziału w losowaniu. Zapisy trwają do {{ edition.signup_deadline|date:"j E Y, H:i" }}.
+
+{% include 'mikolajki/email/_data.txt' %}
+
+Jeśli to nie Ty się zapisujesz, zignoruj tę wiadomość.
+
+Fantazmaty
+{% endautoescape %}

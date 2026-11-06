@@ -1,0 +1,27 @@
+{% extends 'mikolajki/base.html' %}
+{% block lead %}<p class="page-description">Zabawa mikołajkowa Fantazmatów: każda osoba przygotowuje paczkę dla wylosowanej pary i dostaje paczkę od kogoś innego.</p>{% endblock %}
+{% block content %}
+<section class="card mikolajki-card">
+    <h2>Jak to działa?</h2>
+    <ol class="mikolajki-steps">
+        <li>Zapisz się: podaj adres e-mail, dane do wysyłki paczki i napisz list do swojej pary.</li>
+        <li>Potwierdź zgłoszenie linkiem z wiadomości – w niej jest też Twój kod uczestnika. Zachowaj go.</li>
+        <li>Po zamknięciu zapisów losujemy pary i wysyłamy Ci list osoby, dla której przygotujesz paczkę.</li>
+        <li>Gdy paczka będzie gotowa, oznacz to na stronie „Moje zgłoszenie” – wtedy prześlemy Ci adres do wysyłki.</li>
+    </ol>
+    <p class="mikolajki-deadline">{% if open %}Zapisy trwają do <strong>{{ edition.signup_deadline|date:"j E Y, H:i" }}</strong>.{% elif edition.drawn_at %}Pary są już rozlosowane.{% else %}Zapisy są zamknięte.{% endif %}</p>
+</section>
+{% if open %}
+<section class="card mikolajki-card" aria-labelledby="mikolajki-form-title">
+    <h2 id="mikolajki-form-title">Zapisz się</h2>
+    <form method="post" class="mikolajki-form" novalidate>{% csrf_token %}
+        {% include 'mikolajki/fields.html' with form=form %}
+        <div class="actions"><button type="submit" class="primary-button">Wyślij zgłoszenie</button></div>
+    </form>
+</section>
+{% endif %}
+<section class="card mikolajki-card">
+    <h2>Masz już zgłoszenie?</h2>
+    <p>Na stronie <a href="{% url 'mikolajki:secret_santa_entry' %}">Moje zgłoszenie</a> wpiszesz adres e-mail i kod uczestnika – {% if open %}możesz tam poprawić dane i list albo wycofać zgłoszenie{% else %}po losowaniu przeczytasz tam list swojej pary i oznaczysz przygotowaną paczkę{% endif %}.</p>
+</section>
+{% endblock %}

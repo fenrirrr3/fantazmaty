@@ -1,0 +1,9 @@
+{% extends 'mikolajki/base.html' %}
+{% block title %}{{ title }} | Mikołajki{% endblock %}
+{% block content %}
+<section class="card mikolajki-card mikolajki-narrow">
+    <h2>{{ title }}</h2>
+    <p>{{ message }}</p>
+    {% if entry_link %}<p><a href="{% url 'mikolajki:secret_santa_entry' %}">Moje zgłoszenie</a> – tu po losowaniu przeczytasz list swojej pary.</p>{% endif %}
+</section>
+{% endblock %}

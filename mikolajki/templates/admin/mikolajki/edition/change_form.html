@@ -1,0 +1,9 @@
+{% extends "admin/change_form.html" %}
+{# Działania edycji Mikołajek: zamknięcie zapisów, losowanie (z wysłaniem listów) i ponowna wysyłka listów. #}
+{% block content %}{% if mikolajki_edition %}<div class="module mikolajki-admin-actions">
+<h2>Działania</h2>
+<p>Stan: <strong>{{ mikolajki_edition.status_label }}</strong>{% if mikolajki_edition.drawn_at %} · rozlosowano {{ mikolajki_edition.drawn_at|date:"j E Y, H:i" }}{% endif %}.</p>
+{% if can_close %}<form method="post" action="{% url 'admin:mikolajki_edition_close' mikolajki_edition.pk %}">{% csrf_token %}<button type="submit" class="button">Zamknij zapisy teraz</button> <span class="help">Zapisy zamkną się też same {{ mikolajki_edition.signup_deadline|date:"j E Y, H:i" }}.</span></form>{% endif %}
+{% if can_draw %}<form method="post" action="{% url 'admin:mikolajki_edition_draw' mikolajki_edition.pk %}">{% csrf_token %}<button type="submit" class="button default">Rozlosuj pary i wyślij listy</button> <span class="help">Losowanie odbywa się tylko raz: wszystkie potwierdzone zgłoszenia tworzą jedno koło (A → B → C → … → A), bez par wzajemnych. Każda osoba dostaje e-mailem list swojej pary.</span></form>{% endif %}
+{% if unsent_letters %}<form method="post" action="{% url 'admin:mikolajki_edition_letters' mikolajki_edition.pk %}">{% csrf_token %}<button type="submit" class="button">Wyślij niewysłane listy ({{ unsent_letters }})</button></form>{% endif %}
+</div>{% endif %}{{ block.super }}{% endblock %}

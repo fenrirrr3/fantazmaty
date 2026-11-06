@@ -1,0 +1,12 @@
+{% extends 'mikolajki/base.html' %}
+{% block title %}Moje zgłoszenie | {{ edition }}{% endblock %}
+{% block lead %}<p class="page-description">Wpisz adres e-mail i kod uczestnika z wiadomości o zgłoszeniu.</p>{% endblock %}
+{% block content %}
+<section class="card mikolajki-card mikolajki-narrow">
+    <h2>Moje zgłoszenie</h2>
+    <form method="post" class="mikolajki-form">{% csrf_token %}<input type="hidden" name="action" value="login">
+        {% include 'mikolajki/fields.html' with form=form %}
+        <div class="actions"><button type="submit" class="primary-button">Pokaż zgłoszenie</button></div>
+    </form>
+</section>
+{% endblock %}

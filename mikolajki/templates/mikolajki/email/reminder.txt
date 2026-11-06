@@ -1,0 +1,10 @@
+{% autoescape off %}Dzień dobry,
+
+ktoś (prawdopodobnie Ty) ponownie wysłał zgłoszenie na {{ edition }} z tym adresem e-mail. Masz już potwierdzone zgłoszenie – nic w nim nie zmieniliśmy.
+
+Dane i list możesz zmienić do końca zapisów na stronie „Moje zgłoszenie”:
+{{ entry_url }}
+Kod uczestnika: {{ entry.code }}
+
+Fantazmaty
+{% endautoescape %}

@@ -21,7 +21,9 @@ GROUPS = (
     ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry', 'core.socialmediaquote',
                                'core.socialcalendarentry')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
-    ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole', 'core.discordsettings',
+    # Moduł opcjonalny: modele są w panelu tylko przy włączonym module (Ustawienia → Moduły opcjonalne).
+    ('mikolajki', 'Mikołajki', ('mikolajki.edition', 'mikolajki.entry')),
+    ('settings', 'Ustawienia', ('core.optionalmodules', 'core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole', 'core.discordsettings',
                                 'core.siteteamsection', 'core.siteteamsettings', 'core.sitecataloganthology',
                                 'core.sitelistenanthology')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification',
@@ -37,6 +39,7 @@ LABELS = {
     'workflow.workflowroleassignment': 'Przydziały wykonawców',
     'texts.reviewassignment': 'Oceny i przydziały recenzentów', 'texts.reviewers': 'Ogólne uwagi do zgłoszeń',
     'core.notificationrule': 'Powiadomienia Discord', 'core.discordnotification': 'Historia powiadomień Discord',
+    'mikolajki.edition': 'Edycje', 'mikolajki.entry': 'Zgłoszenia',
 }
 
 

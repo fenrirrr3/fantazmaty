@@ -1,0 +1,48 @@
+{% extends 'mikolajki/base.html' %}
+{% block title %}Moje zgłoszenie | {{ edition }}{% endblock %}
+{% block lead %}<p class="page-description">Zgłoszenie: {{ entry.full_name }} ({{ entry.email }})</p>{% endblock %}
+{% block content %}
+<section class="card mikolajki-card">
+    <h2>Status</h2>
+    <p class="mikolajki-status"><span class="badge">{{ entry.status_label }}</span></p>
+    {% if not entry.confirmed_at %}
+        <p>Zgłoszenie nie jest jeszcze potwierdzone – kliknij link z wiadomości o zgłoszeniu. Bez potwierdzenia nie weźmiesz udziału w losowaniu.</p>
+        {% if open %}<form method="post">{% csrf_token %}<button class="secondary-button" name="action" value="resend">Wyślij link ponownie</button></form>{% endif %}
+    {% elif entry.recipient_id %}
+        {% if entry.package_prepared_at %}<p>Paczka oznaczona jako przygotowana {{ entry.package_prepared_at|date:"j E Y, H:i" }}. {% if entry.address_sent_at %}Adres do wysyłki wysłaliśmy {{ entry.address_sent_at|date:"j E Y" }} – sprawdź skrzynkę.{% else %}Organizator wkrótce wyśle Ci e-mailem adres do wysyłki.{% endif %}</p>
+        {% else %}<p>Gdy paczka dla Twojej pary będzie gotowa, kliknij przycisk – organizator wyśle Ci e-mailem adres do wysyłki.</p>
+        <form method="post">{% csrf_token %}<button class="primary-button" name="action" value="prepared">Paczka przygotowana</button></form>{% endif %}
+    {% elif open %}
+        <p>Zgłoszenie jest potwierdzone. Losowanie odbędzie się po zamknięciu zapisów ({{ edition.signup_deadline|date:"j E Y, H:i" }}).</p>
+    {% else %}
+        <p>Zapisy są zamknięte – losowanie wkrótce. List swojej pary dostaniesz e-mailem i zobaczysz tutaj.</p>
+    {% endif %}
+</section>
+{% if entry.recipient_id %}
+<section class="card mikolajki-card" aria-labelledby="mikolajki-letter-title">
+    <h2 id="mikolajki-letter-title">List Twojej pary</h2>
+    <div class="mikolajki-letter">{{ entry.recipient.letter|linebreaks }}</div>
+</section>
+{% endif %}
+<section class="card mikolajki-card" aria-labelledby="mikolajki-data-title">
+    <h2 id="mikolajki-data-title">Moje dane i list</h2>
+    {% if open %}
+    <form method="post" class="mikolajki-form">{% csrf_token %}
+        {% include 'mikolajki/fields.html' with form=form %}
+        <div class="actions"><button type="submit" class="primary-button" name="action" value="save">Zapisz zmiany</button></div>
+    </form>
+    <form method="post" class="mikolajki-withdraw">{% csrf_token %}
+        <button type="submit" class="danger-button" name="action" value="withdraw">Wycofaj zgłoszenie</button>
+        <p class="form-help">Wycofane zgłoszenie nie bierze udziału w losowaniu. Do końca zapisów możesz zapisać się ponownie.</p>
+    </form>
+    {% else %}
+    <dl class="mikolajki-summary">
+        <dt>Imię i nazwisko</dt><dd>{{ entry.full_name }}</dd>
+        <dt>Adres lub numer paczkomatu</dt><dd>{{ entry.shipping_address|linebreaksbr }}</dd>
+        <dt>Numer telefonu</dt><dd>{{ entry.phone }}</dd>
+        <dt>List do pary</dt><dd>{{ entry.letter|linebreaksbr }}</dd>
+    </dl>
+    {% endif %}
+</section>
+<form method="post" class="mikolajki-logout">{% csrf_token %}<button type="submit" class="secondary-button" name="action" value="logout">Wyloguj</button></form>
+{% endblock %}

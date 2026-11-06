@@ -1,0 +1,8 @@
+{% autoescape off %}Dzień dobry,
+
+{% if changed %}zapisaliśmy zmiany w Twoim zgłoszeniu na {{ edition }}.{% else %}zapisaliśmy Twoje zgłoszenie na {{ edition }} – bierzesz udział w losowaniu.{% endif %}
+
+{% include 'mikolajki/email/_data.txt' %}
+
+Fantazmaty
+{% endautoescape %}

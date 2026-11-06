@@ -13,6 +13,10 @@ urlpatterns = [
         include("core.auth_urls"),
     ),
     path(
+        "mikolajki/",
+        include("mikolajki.urls"),
+    ),
+    path(
         "ilustracje/",
         include("illustrations.urls"),
     ),

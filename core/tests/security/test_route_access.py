@@ -57,6 +57,9 @@ PUBLIC = {
     'core:site_team_api': 'dane ekipy dla fantazmaty.pl – zamiast logowania nagłówek X-Site-Key (bez klucza 503, ze złym 403)',
     'core:site_catalog_api': 'katalog szukajki dla fantazmaty.pl – ten sam nagłówek X-Site-Key co dane ekipy',
     'core:site_listen_api': 'lista audiobooków strony „Słuchaj” dla fantazmaty.pl – ten sam nagłówek X-Site-Key',
+    'mikolajki:secret_santa': 'zapisy na Mikołajki bez konta w CMS-ie (moduł wyłączony – 404)',
+    'mikolajki:secret_santa_confirm': 'potwierdzenie zgłoszenia linkiem z e-maila (podpisany token)',
+    'mikolajki:secret_santa_entry': 'własne zgłoszenie po adresie e-mail i kodzie uczestnika',
 }
 
 

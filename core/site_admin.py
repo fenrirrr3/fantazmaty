@@ -11,6 +11,7 @@ from django.utils.html import format_html
 
 from authors.admin import SuperuserOnlyAdminMixin
 from core.admin_access import SingleRecordAdminMixin
+from core.models import OptionalModules
 from core.site_catalog import cms_source
 from core.site_models import (SiteCatalogAnthology, SiteCatalogStory, SiteListenAnthology, SiteListenRecording,
                               SiteTeamGroup, SiteTeamSection, SiteTeamSettings)
@@ -47,6 +48,19 @@ class SiteTeamSectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).prefetch_related('groups')
+
+
+@admin.register(OptionalModules)
+class OptionalModulesAdmin(SingleRecordAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    """Jeden rekord: lista od razu otwiera jego edycję (rekord powstaje przy pierwszym wejściu)."""
+    fields = ('secret_santa',)
+
+    def changelist_view(self, request, extra_context=None):
+        from django.shortcuts import redirect
+        if not self.has_change_permission(request):
+            return super().changelist_view(request, extra_context)
+        record, _ = OptionalModules.objects.get_or_create(pk=1)
+        return redirect(reverse('admin:core_optionalmodules_change', args=[record.pk]))
 
 
 @admin.register(SiteTeamSettings)

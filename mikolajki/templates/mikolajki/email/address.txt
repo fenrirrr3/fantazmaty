@@ -1,0 +1,10 @@
+{% autoescape off %}Dzień dobry,
+
+dziękujemy za przygotowanie paczki! Wyślij ją na adres:
+
+{{ recipient.full_name }}
+{{ recipient.shipping_address }}
+Telefon: {{ recipient.phone }}
+
+Fantazmaty
+{% endautoescape %}

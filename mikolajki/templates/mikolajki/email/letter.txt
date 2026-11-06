@@ -1,0 +1,14 @@
+{% autoescape off %}Dzień dobry,
+
+pary są rozlosowane! Oto list osoby, dla której przygotujesz paczkę:
+
+------------------------------------------------------------
+{{ letter }}
+------------------------------------------------------------
+
+Gdy paczka będzie gotowa, wejdź na stronę „Moje zgłoszenie” i kliknij „Paczka przygotowana” – wtedy wyślemy Ci adres do wysyłki:
+{{ entry_url }}
+Kod uczestnika: {{ entry.code }}
+
+Fantazmaty
+{% endautoescape %}

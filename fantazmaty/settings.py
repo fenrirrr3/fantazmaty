@@ -132,6 +132,7 @@ INSTALLED_APPS = [
     "workflow.apps.WorkflowConfig",
     "people.apps.PeopleConfig",
     "illustrations.apps.IllustrationsConfig",
+    "mikolajki.apps.MikolajkiConfig",
 ]
 
 MIDDLEWARE = [

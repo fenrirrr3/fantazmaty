@@ -41,6 +41,28 @@ class PublicAudiobookSettings(models.Model):
         return 'Zewnętrzne audiobooki – MegaNZ i wytyczne'
 
 
+class OptionalModules(models.Model):
+    """Moduły opcjonalne (jeden rekord, pk=1): wyłączony moduł nie ma strony ani sekcji w panelu admina."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    secret_santa = models.BooleanField(
+        'Mikołajki', default=False,
+        help_text='Strona zapisów /mikolajki i sekcja „Mikołajki” w panelu admina. Wyłączone – strona zwraca '
+                  '404, a sekcja jest ukryta (zgłoszenia zostają w bazie).')
+
+    class Meta:
+        verbose_name = 'moduły opcjonalne'
+        verbose_name_plural = 'Moduły opcjonalne'
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name='single_optional_modules')]
+
+    def __str__(self):
+        return 'Moduły opcjonalne'
+
+    @classmethod
+    def enabled(cls, name):
+        """Czy moduł `name` (nazwa pola) jest włączony."""
+        return bool(cls.objects.filter(pk=1).values_list(name, flat=True).first())
+
+
 class AnthologyCorrection(models.Model):
     objects = VersionedQuerySet.as_manager()
     class Status(models.TextChoices):

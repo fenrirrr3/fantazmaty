@@ -35,12 +35,14 @@ SEGMENTS = {
     "illustrations": "ilustracje", "illustration": "ilustracja", "illustrator": "ilustrator", "coverproposal": "propozycja-okladki",
     "add": "dodaj", "change": "edytuj", "delete": "usun", "history": "historia",
     "password": "haslo", "author-details": "szczegoly-autora",
+    "optionalmodules": "moduly-opcjonalne", "mikolajki": "mikolajki", "edition": "edycje", "entry": "zgloszenia",
+    "close": "zamknij-zapisy", "draw": "losuj", "letters": "wyslij-listy", "address": "wyslij-adres",
 }
 
 
 # Polska nazwa sekcji panelu → etykieta aplikacji (lista modeli aplikacji: /panel/<sekcja>/).
 APP_LABELS = {SEGMENTS[label]: label for label in ("core", "authors", "texts", "people", "workflow", "illustrations",
-                                                    "auth")}
+                                                    "auth", "mikolajki")}
 
 
 class PolishAppConverter:

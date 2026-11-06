@@ -1,0 +1,12 @@
+{% autoescape off %}Twoje zgłoszenie
+Adres e-mail: {{ entry.email }}
+Imię i nazwisko: {{ entry.full_name }}
+Adres lub numer paczkomatu:
+{{ entry.shipping_address }}
+Numer telefonu: {{ entry.phone }}
+
+List do pary:
+{{ entry.letter }}
+
+Kod uczestnika: {{ entry.code }}
+Zachowaj go – razem z adresem e-mail otwiera stronę „Moje zgłoszenie”: {{ entry_url }}{% endautoescape %}

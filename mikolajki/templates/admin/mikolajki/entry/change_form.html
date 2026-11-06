@@ -1,0 +1,6 @@
+{% extends "admin/change_form.html" %}
+{# Zgłoszenie z przygotowaną paczką: wysłanie adresu pary do tej osoby. #}
+{% block content %}{% if original.package_prepared_at and original.recipient_id %}<div class="module mikolajki-admin-actions">
+<h2>Paczka przygotowana {{ original.package_prepared_at|date:"j E Y, H:i" }}</h2>
+<form method="post" action="{% url 'admin:mikolajki_entry_address' original.pk %}">{% csrf_token %}<button type="submit" class="button default">{% if original.address_sent_at %}Wyślij adres pary ponownie{% else %}Wyślij adres pary e-mailem{% endif %}</button> <span class="help">Na {{ original.email }} trafią imię i nazwisko, adres i telefon wylosowanej pary.{% if original.address_sent_at %} Ostatnio wysłano {{ original.address_sent_at|date:"j E Y, H:i" }}.{% endif %}</span></form>
+</div>{% endif %}{{ block.super }}{% endblock %}

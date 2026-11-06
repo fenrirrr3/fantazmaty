@@ -1,0 +1,6 @@
+{# Pola formularza: podpis nad polem, opis i błędy pod nim; pole-pułapka ukryte przed ludźmi. Parametr: form. #}
+{{ form.non_field_errors }}
+{% for field in form %}{% if field.name == 'website' %}<div class="mikolajki-trap" aria-hidden="true"><label for="{{ field.id_for_label }}">{{ field.label }}</label><input type="text" name="{{ field.html_name }}" id="{{ field.id_for_label }}" tabindex="-1" autocomplete="off"></div>
+{% elif field.name == 'consent' %}<div class="form-field mikolajki-consent"><label for="{{ field.id_for_label }}">{{ field }} <span>{{ field.label }}</span></label>{{ field.errors }}</div>
+{% else %}<div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>
+{% endif %}{% endfor %}

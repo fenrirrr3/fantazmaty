@@ -1,0 +1,28 @@
+{% load static %}<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="robots" content="noindex, nofollow"><meta name="referrer" content="same-origin">
+    <title>{% block title %}{% if edition %}{{ edition }}{% else %}Mikołajki{% endif %}{% endblock %} | Fantazmaty</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'core/favicon-white.svg' %}">
+    <script src="{% static 'core/theme.js' %}"></script>
+    {% include 'core/includes/stylesheets.html' %}
+    <link rel="stylesheet" href="{% static 'core/mikolajki.css' %}">
+</head>
+<body class="mikolajki-page">
+<main class="container mikolajki" id="main-content">
+    <header class="mikolajki-header">
+        <img class="mikolajki-logo" src="{% static 'core/fantazmaty-logo.png' %}" alt="Fantazmaty">
+        <div>
+            <p class="mikolajki-kicker">Fantazmaty</p>
+            <h1 class="page-title">Mikołajki{% if edition %} {{ edition.year }}{% endif %}</h1>
+            {% block lead %}{% endblock %}
+        </div>
+    </header>
+    {% if messages %}<ul class="messages" role="status">{% for message in messages %}<li class="message {{ message.tags }}">{{ message }}</li>{% endfor %}</ul>{% endif %}
+    {% block content %}{% endblock %}
+    <footer class="mikolajki-footer"><a href="{% url 'mikolajki:secret_santa' %}">Zapisy</a> · <a href="{% url 'mikolajki:secret_santa_entry' %}">Moje zgłoszenie</a></footer>
+</main>
+</body>
+</html>
