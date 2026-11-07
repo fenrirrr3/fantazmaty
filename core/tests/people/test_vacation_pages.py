@@ -99,6 +99,15 @@ class MyVacationsPageTests(VacationPageFixtures):
         page = self.client.get(self.url)
         self.assertNotIn(self.colleague.person_profile.pk, [p.pk for p in page.context['vacation_people']])
 
+    def test_my_vacations_explain_what_vacation_is_for(self):
+        """Opis strony mówi, po co jest urlop: w tym czasie nikt nie wywołuje ani nie dopytuje."""
+        self.client.force_login(self.member)
+        description = ' '.join(html.fromstring(self.client.get(self.url).content)
+                               .xpath('string(//p[contains(@class,"page-description")])').split())
+        self.assertEqual(description, 'Zgłoś nieobecność, sprawdź zaplanowane urlopy i historię. Urlop wykorzystujemy '
+                         'tylko po to, żeby wiedzieć, kiedy nie możesz podjąć się żadnej aktywności – w tym czasie '
+                         'nie będziemy cię wywoływać ani dopytywać.')
+
     def test_my_vacations_show_entire_own_history_without_pagination(self):
         start = timezone.now() - timedelta(days=365)
         person = self.member.person_profile

@@ -273,6 +273,32 @@ class RecruitmentNotifiedTests(RecruitmentTeamMixin, TestCase):
         self.record.refresh_from_db()
         self.assertEqual(self.record.notified_at, date)
 
+    def test_detail_page_changes_notified_like_list(self):
+        """Podgląd zgłoszenia: wybór Tak/Nie z tokenem jak na liście (z uprawnieniem do skrzynki), data powiadomienia
+        w odpowiedzi i na stronie; bez uprawnienia sam tekst."""
+        detail = reverse('core:recruitment_detail', args=[self.record.pk])
+        self.client.force_login(self.coordinator)
+        doc = html.fromstring(self.client.get(detail).content)
+        self.assertFalse(doc.xpath('//select[@data-recruitment-notified]'))
+        self.assertEqual(' '.join(doc.xpath('string(//div[@class="recruitment-notified-field"])').split()), 'Powiadomiony: Nie')
+        self.client.force_login(self.recruiter)
+        doc = html.fromstring(self.client.get(detail).content)
+        field = doc.xpath('//div[@class="recruitment-notified-field"]//select[@data-recruitment-notified]')[0]
+        self.assertEqual((field.get('data-url'), field.get('data-value')), (self.url, 'no'))
+        self.assertEqual(field.xpath('option[@selected]/@value'), ['no'])
+        self.assertTrue(doc.xpath('//script[contains(@src,"recruitment-notified")]'))
+        self.assertEqual(doc.xpath('string(//*[@data-recruitment-notified-at])'), '')
+        response = self.client.post(self.url, {'notified': 'yes', 'version': field.get('data-version')})
+        self.assertEqual(response.status_code, 200)
+        self.record.refresh_from_db()
+        expected = timezone.localtime(self.record.notified_at).strftime('%d.%m.%Y %H:%M')
+        self.assertEqual(response.json()['notified_at'], expected)
+        doc = html.fromstring(self.client.get(detail).content)
+        self.assertEqual(doc.xpath('//select[@data-recruitment-notified]/option[@selected]/@value'), ['yes'])
+        self.assertEqual(doc.xpath('string(//*[@data-recruitment-notified-at])'), f'({expected})')
+        response = self.client.post(self.url, {'notified': 'no', 'version': response.json()['version']})
+        self.assertEqual(response.json()['notified_at'], '')
+
     def test_save_with_empty_update_fields_writes_nothing(self):
         """Pusty update_fields kończy zapis bez zmian (także bez przeliczania daty powiadomienia)."""
         self.record.notes = 'niezapisane'

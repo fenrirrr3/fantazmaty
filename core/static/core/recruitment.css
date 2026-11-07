@@ -370,6 +370,26 @@
     white-space: normal;
 }
 
+/* Podgląd zgłoszenia: wybór Powiadomiony w wierszu danych, komunikat zapisu obok. */
+.recruitment-notified-field {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-3);
+}
+
+.recruitment-notified-field .recruitment-notified {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.recruitment-notified-field .recruitment-notified [role="status"] {
+    margin-top: 0;
+}
+
 /* ===== Szczegóły zgłoszenia do zespołu ===== */
 .recruitment-detail-grid {
     align-items: start;

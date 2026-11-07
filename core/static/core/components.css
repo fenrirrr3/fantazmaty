@@ -943,6 +943,13 @@ details[open] > summary .dropdown-arrow {
     color: var(--danger-dark);
 }
 
+/* „W czytaniu” – recenzja w toku: odcień bardziej niebieski niż turkus recenzenta. */
+.reviewer-bubble.reviewer-opinion-reading {
+    border-color: var(--reading-fg);
+    background: var(--reading-bg);
+    color: var(--reading-fg);
+}
+
 /* „Nie doczytałem” – bez głosu za ani przeciw: neutralna, przerywana ramka. */
 .reviewer-bubble.reviewer-opinion-not_read {
     border-style: dashed;

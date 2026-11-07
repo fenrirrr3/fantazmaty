@@ -47,5 +47,20 @@ function respond(request, value, ok=true) {
     assert.equal(request.options.body.has('decision'), false); assert.equal(request.options.body.has('cursor'), false);
     respond(request, {notified:true, version:'v3', url:'/save/42/'}); await importing;
     assert.equal(field.dataset.url, '/save/42/');
+    // Podgląd zgłoszenia: bez komórki i wiersza tabeli, z datą powiadomienia obok wyboru.
+    const date = {textContent: ''};
+    const detailField = {value: 'yes', disabled: false, dataset: {value: 'no', version: 'v4', url: '/save/7/'},
+        closest(selector) {
+            return {'[data-recruitment-notified]': this, '.recruitment-notified': {querySelector: () => status},
+                '.recruitment-notified-field': {querySelector: () => date}}[selector] ?? null;
+        }};
+    const onDetail = change({target: detailField});
+    respond(pending[3], {notified:true, version:'v5', url:'/save/7/', notified_at:'07.11.2026 12:30'}); await onDetail;
+    assert.equal(status.textContent, 'Zapisano'); assert.equal(detailField.dataset.value, 'yes');
+    assert.equal(date.textContent, '(07.11.2026 12:30)');
+    detailField.value = 'no';
+    const cleared = change({target: detailField});
+    respond(pending[4], {notified:false, version:'v6', url:'/save/7/', notified_at:''}); await cleared;
+    assert.equal(date.textContent, ''); assert.equal(detailField.dataset.version, 'v6');
     console.log('Recruitment notification autosave: OK');
 })().catch(error => {console.error(error); process.exitCode=1;});

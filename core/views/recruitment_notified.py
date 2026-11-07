@@ -4,6 +4,8 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.dateformat import format as date_format
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 from core.edit_versions import signed_state, signed_state_matches
@@ -42,7 +44,8 @@ def notification_response(record, user):
     return {'notified': record.notified, 'version': notified_token(user, record),
             'url': reverse('core:recruitment_notified', args=[record.pk]),
             'record_url': reverse('core:recruitment_detail', args=[record.pk]),
-            'decision': record.decision_display, 'status': record.status}
+            'decision': record.decision_display, 'status': record.status,
+            'notified_at': date_format(timezone.localtime(record.notified_at), 'd.m.Y H:i') if record.notified_at else ''}
 
 
 @never_cache

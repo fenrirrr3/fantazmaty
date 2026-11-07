@@ -24,6 +24,7 @@
     --ready-bg: #eee2f9; --ready-fg: #6f3c91;
     --ready-edit-bg: #d3f3f1; --ready-edit-fg: #145d59;
     --reviewer-bg: #ccfbf1; --reviewer-fg: #115e59;
+    --reading-bg: #d3edfb; --reading-fg: #12507a;
     --coordinator-bg: #ffedd5; --coordinator-fg: #9a3412;
     --right-hand-bg: #334155; --right-hand-fg: #ffffff;
     --illustrator-bg: #fce7f3; --illustrator-fg: #86134f;
@@ -72,6 +73,7 @@
     --ready-bg: #3c2d50; --ready-fg: #dfbbff;
     --ready-edit-bg: #163f41; --ready-edit-fg: #91e0dc;
     --reviewer-bg: #143d3b; --reviewer-fg: #99f6e4;
+    --reading-bg: #15374d; --reading-fg: #a5dcf7;
     --coordinator-bg: #492b1b; --coordinator-fg: #fdba74;
     --right-hand-bg: #475569; --right-hand-fg: #ffffff;
     --illustrator-bg: #4a2339; --illustrator-fg: #f9b8d9;
@@ -178,6 +180,8 @@
         --ready-edit-fg: #000;
         --reviewer-bg: #fff;
         --reviewer-fg: #000;
+        --reading-bg: #fff;
+        --reading-fg: #000;
         --coordinator-bg: #fff;
         --coordinator-fg: #000;
         --emperor-bg: #fff;

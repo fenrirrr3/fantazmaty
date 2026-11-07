@@ -27,17 +27,20 @@ document.addEventListener('change', async event => {
         if (!response.ok) throw Error(result.error || 'Nie zapisano zmiany. Odśwież stronę.');
         field.value = field.dataset.value = result.notified ? 'yes' : 'no';
         field.dataset.url = result.url; field.dataset.version = result.version;
+        // Lista i skrzynka: komórka tabeli z wartościami do kopiowania i sortowania; podgląd zgłoszenia: data powiadomienia.
         const cell = field.closest('td');
-        cell.dataset.copyValue = cell.dataset.sortValue = result.notified ? 'Tak' : 'Nie';
+        if (cell) cell.dataset.copyValue = cell.dataset.sortValue = result.notified ? 'Tak' : 'Nie';
+        const date = field.closest('.recruitment-notified-field')?.querySelector('[data-recruitment-notified-at]');
+        if (date) date.textContent = result.notified_at ? '(' + result.notified_at + ')' : '';
         const row = field.closest('tr');
-        const linkCell = row.querySelector('[data-recruitment-record]');
+        const linkCell = row?.querySelector('[data-recruitment-record]');
         if (linkCell) {
             const link = document.createElement('a'); link.href = result.record_url;
             link.textContent = 'Podgląd'; link.className = 'secondary-button';
             linkCell.replaceChildren(link);
             row.querySelector('[data-recruitment-stored]').textContent = 'W bazie';
         }
-        const decisionCell = row.querySelector('.recruitment-decision-cell');
+        const decisionCell = row?.querySelector('.recruitment-decision-cell');
         if (decisionCell) {
             const label = document.createElement('span'); label.textContent = result.decision;
             label.className = ['accepted','rejected'].includes(result.status) ? 'recruitment-decision ' + result.status : 'muted-text';
