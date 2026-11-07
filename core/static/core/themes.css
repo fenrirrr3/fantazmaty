@@ -25,6 +25,7 @@
     --ready-edit-bg: #d3f3f1; --ready-edit-fg: #145d59;
     --reviewer-bg: #ccfbf1; --reviewer-fg: #115e59;
     --reading-bg: #d3edfb; --reading-fg: #12507a;
+    --reviewed-bg: #dce6fd; --reviewed-fg: #1d4a9e;
     --coordinator-bg: #ffedd5; --coordinator-fg: #9a3412;
     --right-hand-bg: #334155; --right-hand-fg: #ffffff;
     --illustrator-bg: #fce7f3; --illustrator-fg: #86134f;
@@ -74,6 +75,7 @@
     --ready-edit-bg: #163f41; --ready-edit-fg: #91e0dc;
     --reviewer-bg: #143d3b; --reviewer-fg: #99f6e4;
     --reading-bg: #15374d; --reading-fg: #a5dcf7;
+    --reviewed-bg: #1f2f57; --reviewed-fg: #b3c9ff;
     --coordinator-bg: #492b1b; --coordinator-fg: #fdba74;
     --right-hand-bg: #475569; --right-hand-fg: #ffffff;
     --illustrator-bg: #4a2339; --illustrator-fg: #f9b8d9;
@@ -125,6 +127,7 @@
 [data-palette="ready-for-editing"] { --palette-bg: var(--ready-edit-bg); --palette-fg: var(--ready-edit-fg); }
 [data-palette="withdrawn"] { --palette-bg: var(--danger-light); --palette-fg: var(--danger-dark); }
 [data-palette="reviewer"] { --palette-bg: var(--reviewer-bg); --palette-fg: var(--reviewer-fg); }
+[data-palette="reviewed"] { --palette-bg: var(--reviewed-bg); --palette-fg: var(--reviewed-fg); }
 [data-palette="coordinator"] { --palette-bg: var(--coordinator-bg); --palette-fg: var(--coordinator-fg); }
 [data-palette="right-hand"] { --palette-bg: var(--right-hand-bg); --palette-fg: var(--right-hand-fg); }
 [data-palette="illustrator"] { --palette-bg: var(--illustrator-bg); --palette-fg: var(--illustrator-fg); }
@@ -182,6 +185,8 @@
         --reviewer-fg: #000;
         --reading-bg: #fff;
         --reading-fg: #000;
+        --reviewed-bg: #fff;
+        --reviewed-fg: #000;
         --coordinator-bg: #fff;
         --coordinator-fg: #000;
         --emperor-bg: #fff;

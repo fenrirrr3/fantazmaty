@@ -55,6 +55,19 @@ class ReviewListByDecisionTests(TestCase):
         self.assertContains(self.client.get(reverse('core:assigned_review_detail', args=[accepted.pk])),
                             'Recenzja archiwalna')
 
+    def test_own_review_badge_says_reviewed_in_blue_palette(self):
+        """Na liście recenzji zgłoszenie z własnym przydziałem ma niebieską etykietę „Zrecenzowane”; cudze – bez etykiety."""
+        own = self.make_review('Własny', 'in_review', 'yes')
+        foreign = self.make_review('Cudzy', 'in_review', 'yes', user=self.other)
+        self.client.force_login(self.reader)
+        doc = html.fromstring(self.client.get(reverse('core:review_list')).content)
+        for review, badges in ((own, ['Zrecenzowane']), (foreign, [])):
+            with self.subTest(review=review.title):
+                row = doc.xpath(f'//tr[.//a[contains(@href,"/{review.pk}/")]]')[0]
+                self.assertEqual([badge.text_content().strip() for badge in row.xpath('.//span[@data-palette="reviewed"]')],
+                                 badges)
+        self.assertNotIn('Twoja recenzja', doc.text_content())
+
     def test_my_reviews_two_tabs_include_all_history_and_unrated_work(self):
         waiting = self.make_review('Oczekujący', 'new')
         reading = self.make_review('Czytany', 'in_review', 'reading')
